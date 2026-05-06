@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Staff Dashboard - Jimmy</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <meta name="theme-color" content="#0c47a5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Jimmy">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/assets/jimmy-logo.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+  <link rel="mask-icon" href="/assets/jimmy-logo-mask.svg" color="#0c47a5">
+  <meta name="msapplication-TileColor" content="#0c47a5">
+  <meta name="msapplication-config" content="/browserconfig.xml">
+</head>
+<body>
+  <div id="appSplash" class="app-splash" aria-hidden="true">
+    <div class="app-splash-card">
+      <img class="app-splash-logo" src="/assets/jimmy-logo.svg" alt="Jimmy">
+      <p class="app-splash-subtitle">Attendance and store sales system</p>
+      <div class="app-splash-dots"><span></span><span></span><span></span></div>
+    </div>
+  </div>
+  <div class="mobile-menu"><span><img src="/assets/jimmy-logo.svg" alt="Jimmy"> Staff</span><button class="small secondary" onclick="toggleSidebar()">Menu</button></div>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="logo"><img src="/assets/jimmy-logo.svg" alt="Jimmy"><span>Jimmy</span></div>
+      <nav class="nav">
+        <a href="#dashboard" class="active" data-section-link>Dashboard</a>
+        <a href="#profile" data-section-link>Profile</a>
+        <a href="#attendance" data-section-link>Attendance</a>
+        <a href="#reports" data-section-link>Monthly Reports</a>
+        <button onclick="logout()">Logout</button>
+      </nav>
+      <div class="hint">Developer: <a class="footer-link" href="https://www.kestford.com" target="_blank">www.kestford.com</a></div>
+    </aside>
+    <main class="content">
+      <div class="topbar">
+        <div><h1>Staff Dashboard</h1><p id="welcomeText">Loading profile...</p></div>
+        <span class="badge" id="faceBadge">Manual selfie review</span>
+      </div>
+
+      <section id="dashboard" class="section active">
+        <div class="profile-summary card">
+          <div id="dashboardAvatar"></div>
+          <div>
+            <h2 id="dashboardName">Loading...</h2>
+            <p class="muted">Staff/Admin ID: <b id="dashboardStaffId">-</b></p>
+            <p class="muted">Last Login: <b id="lastLoginText">-</b> · Last Logout: <b id="lastLogoutText">-</b></p>
+          </div>
+        </div>
+        <div class="grid cols-4" style="margin-top:18px">
+          <div class="stat"><span class="muted">Current Status</span><b id="currentStatus">Checking...</b></div>
+          <div class="stat"><span class="muted">Location</span><b id="locationStatus">Not checked</b></div>
+          <div class="stat"><span class="muted">Open Attendance</span><b id="openAttendanceId">None</b></div>
+          <div class="stat"><span class="muted">Location Warnings</span><b id="locationWarningCount">0</b></div>
+        </div>
+        <div class="grid cols-2" style="margin-top:18px">
+          <div class="card">
+            <h2>Store Selfie Submission</h2>
+            <div class="camera-box">
+              <video id="camera" autoplay playsinline muted></video>
+              <canvas id="snapshot" width="640" height="480"></canvas>
+            </div>
+            <div class="toolbar" style="margin-top:14px">
+              <button class="secondary" onclick="startCamera()">Start Camera</button>
+              <button class="secondary" onclick="captureSnapshot()">Capture Store Selfie</button>
+            </div>
+            <p class="hint">Capture a clear selfie with the store background visible.</p>
+          </div>
+          <div class="card">
+            <h2>Check In / Check Out</h2>
+            <div class="form-grid">
+              <div><label>Store</label><select id="storeSelect"></select></div>
+              <button onclick="getLocationNow()" class="secondary">Get Current Location</button>
+              <button onclick="checkIn()">Check In</button>
+            </div>
+            <div id="locationWarningBox" class="warning-box" style="display:none;margin-top:14px"></div>
+            <hr style="border:0;border-top:1px solid var(--line);margin:22px 0">
+            <h3>Logout Sales Report</h3>
+            <div class="grid cols-2">
+              <div><label>Total Customer</label><input id="totalCustomers" type="number" min="0" value="0"></div>
+              <div><label>Converted</label><input id="convertedCustomers" type="number" min="0" value="0"></div>
+            </div>
+            <div class="table-wrap" style="margin-top:14px">
+              <table>
+                <thead><tr><th>Model</th><th>Qty</th><th>Unit Price</th><th>Value</th></tr></thead>
+                <tbody id="salesItems"></tbody>
+              </table>
+            </div>
+            <div class="totals" style="margin-top:14px">
+              <div class="notice">Total Qty<br><b id="totalQty">0</b></div>
+              <div class="notice">Total Value<br><b id="totalValue">0.00</b></div>
+              <div class="notice">Conversion<br><b id="conversionRate">0%</b></div>
+              <div class="notice">Logout Time<br><b id="logoutPreview">--:--</b></div>
+            </div>
+            <button class="danger full-mobile" style="margin-top:16px" onclick="checkOut()">Submit Sales, Selfie and Log Out</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="profile" class="section">
+        <div class="grid cols-2">
+          <div class="card">
+            <h2>My Profile</h2>
+            <div class="profile-summary">
+              <div id="profileAvatar"></div>
+              <div>
+                <p><strong>Name:</strong> <span id="profileName">-</span></p>
+                <p><strong>Staff/Admin ID:</strong> <span id="profileStaffId">-</span></p>
+                <p><strong>Role:</strong> <span id="profileRole">-</span></p>
+                <p><strong>Location Warnings:</strong> <span id="profileWarnings">0</span></p>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Update Profile Picture</h2>
+            <p class="hint">Upload a clear profile picture for your account.</p>
+            <input id="profilePhotoInput" type="file" accept="image/*">
+            <button style="margin-top:12px" onclick="uploadProfilePhoto()">Upload Profile Picture</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="attendance" class="section">
+        <div class="card">
+          <h2>My Attendance</h2>
+          <div class="table-wrap"><table><thead><tr><th>Date</th><th>Store</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Sales Qty</th><th>Sales Value</th><th>No Sale Reason</th><th>Selfie Review</th><th>Location</th><th>Status</th></tr></thead><tbody id="attendanceRows"></tbody></table></div>
+        </div>
+      </section>
+
+      <section id="reports" class="section">
+        <div class="card">
+          <h2>My Monthly PDF Reports</h2>
+          <div class="table-wrap"><table><thead><tr><th>Report ID</th><th>Month</th><th>Present</th><th>Absent</th><th>Total Hours</th><th>Sales Value</th><th>Location Warnings</th><th>Download</th></tr></thead><tbody id="reportRows"></tbody></table></div>
+        </div>
+      </section>
+      <footer>Jimmy Attendance System. Developer: <a href="https://www.kestford.com" target="_blank">www.kestford.com</a></footer>
+    </main>
+  </div>
+
+  <div id="noSaleModal" class="modal-backdrop" style="display:none">
+    <div class="modal-card">
+      <h2>No Sale Reason</h2>
+      <p class="hint">No product quantity was entered. Please explain the situation professionally so admin can review it.</p>
+      <label>Reason</label>
+      <textarea id="noSaleReasonInput" rows="5" placeholder="Example: Customer traffic was low, customers asked for unavailable models, price objection, demo issue, or other store situation."></textarea>
+      <div class="toolbar" style="margin-top:14px;justify-content:flex-end">
+        <button class="secondary" type="button" onclick="cancelNoSaleReason()">Cancel</button>
+        <button type="button" onclick="submitNoSaleReason()">Submit Reason</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/worker.js"></script>
+</body>
+</html>
