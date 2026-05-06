@@ -9,6 +9,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
 const { createClient } = require('@supabase/supabase-js');
+const WebSocket = require('ws');
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 const cron = require('node-cron');
@@ -37,12 +38,17 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   process.exit(1);
 }
 
+globalThis.WebSocket = WebSocket;
+
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false },
   max: Number(process.env.PG_POOL_MAX || 6)
 });
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+  realtime: { transport: WebSocket }
+});
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
