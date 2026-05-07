@@ -3,6 +3,7 @@ const STATIC_ASSETS = [
   '/',
   '/css/styles.css',
   '/js/common.js',
+  '/js/chat.js',
   '/assets/jimmy-logo.svg',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png',

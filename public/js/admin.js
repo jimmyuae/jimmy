@@ -5,6 +5,7 @@ let storesCache = [];
 let usersCache = [];
 let attendanceCache = [];
 let adminCache = null;
+let signupRequestsCache = [];
 
 async function bootAdmin() {
   const me = await api('/api/me');
@@ -47,6 +48,7 @@ async function uploadAdminProfilePhoto() {
 async function refreshAll() {
   await loadStores();
   await loadUsers();
+  await loadSignupRequests();
   await loadProducts();
   await loadAttendance();
   await loadWorkStatus();
@@ -101,6 +103,59 @@ function renderUsers() {
   `).join('') || '<tr><td colspan="11">No users match this filter.</td></tr>';
 }
 
+async function loadSignupRequests() {
+  try {
+    const data = await api('/api/admin/signup-requests');
+    signupRequestsCache = data.requests || [];
+    statPendingRequests.textContent = signupRequestsCache.filter(r => r.approval_status === 'pending').length;
+    renderSignupRequests();
+  } catch (err) {
+    console.warn('Could not load signup requests', err);
+    statPendingRequests.textContent = '0';
+    if (typeof signupRequestRows !== 'undefined') signupRequestRows.innerHTML = '<tr><td colspan="10">Could not load signup requests.</td></tr>';
+  }
+}
+
+function renderSignupRequests() {
+  signupRequestRows.innerHTML = signupRequestsCache.map(r => `
+    <tr>
+      <td>${avatarHtml(r.profile_image_path, r.name)}</td>
+      <td>${escapeHtml(r.name)}</td>
+      <td>${escapeHtml(r.email)}</td>
+      <td>${escapeHtml(r.phone || '-')}</td>
+      <td>${escapeHtml(r.employee_code || '-')}</td>
+      <td>${escapeHtml(r.store_group || '-')}</td>
+      <td>${escapeHtml(r.store_name || '-')}</td>
+      <td>${fmtDate(r.approval_requested_at)}</td>
+      <td><span class="badge ${r.approval_status === 'pending' ? 'warn' : 'bad'}">${escapeHtml(r.approval_status || 'pending')}</span></td>
+      <td>${r.approval_status === 'pending' ? `<div class="toolbar"><button class="small" onclick="approveSignup(${r.id})">Approve</button><button class="small danger" onclick="declineSignup(${r.id})">Decline</button></div>` : '<span class="muted">Reviewed</span>'}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="10">No pending signup requests.</td></tr>';
+}
+
+async function approveSignup(id) {
+  const request = signupRequestsCache.find(r => Number(r.id) === Number(id));
+  if (!confirm(`Approve ${request ? request.name : 'this merchandiser'} account request?`)) return;
+  try {
+    const result = await api(`/api/admin/signup-requests/${id}/approve`, { method: 'PATCH' });
+    alert(result.message || 'Signup request approved.');
+    await loadSignupRequests();
+    await loadUsers();
+  } catch (err) { alert(err.message); }
+}
+
+async function declineSignup(id) {
+  const request = signupRequestsCache.find(r => Number(r.id) === Number(id));
+  const note = prompt(`Decline ${request ? request.name : 'this merchandiser'} account request? Optional note:`, '');
+  if (note === null) return;
+  try {
+    const result = await api(`/api/admin/signup-requests/${id}/decline`, { method: 'PATCH', body: JSON.stringify({ note }) });
+    alert(result.message || 'Signup request declined.');
+    await loadSignupRequests();
+  } catch (err) { alert(err.message); }
+}
+
+
 async function loadStores() {
   const data = await api('/api/admin/stores');
   storesCache = data.stores;
@@ -137,7 +192,7 @@ async function loadStores() {
         <td>${s.radius_m || 500}m</td>
         <td>${escapeHtml(s.opening_time)} - ${escapeHtml(s.closing_time)}</td>
         <td><span class="badge ${s.active ? 'ok' : 'bad'}">${s.active ? 'Active' : 'Inactive'}</span></td>
-        <td><button class="small danger" onclick="deactivateStore(${s.id})">Delete</button></td>
+        <td>${s.active ? `<button class="small danger" onclick="deactivateStore(${s.id})">Remove</button>` : ''}</td>
       </tr>
     `);
   }
@@ -304,16 +359,16 @@ async function disableProduct(id) {
 async function deactivateUser(id) {
   const user = usersCache.find(u => Number(u.id) === Number(id));
   const name = user ? `${user.name} (${user.employee_code || user.email})` : 'this user';
-  const typed = prompt(`You are deleting sensitive data. This action will permanently delete ${name} and all linked attendance, sales, report, login, and selfie records. This cannot be undone.
+  const typed = prompt(`This will permanently delete ${name} and all linked data.
 
-To confirm, please write exactly: Confirm`);
+To continue, please write exactly: Confirm`);
   if (typed === null) return;
-  if (typed.trim() !== 'Confirm') {
-    alert('Deletion cancelled. You must write exactly Confirm to delete the user.');
+  if (String(typed || '').trim().toLowerCase() !== 'confirm') {
+    alert('Deletion not confirmed. Please type Confirm to continue.');
     return;
   }
   try {
-    const result = await api(`/api/admin/users/${id}`, { method: 'DELETE', body: JSON.stringify({ confirm: 'Confirm' }) });
+    const result = await api(`/api/admin/users/${id}`, { method: 'DELETE' });
     alert(result.message || 'User permanently deleted.');
     await loadUsers();
     await loadAttendance();
@@ -323,18 +378,18 @@ To confirm, please write exactly: Confirm`);
 }
 async function deactivateStore(id) {
   const store = storesCache.find(s => Number(s.id) === Number(id));
-  const name = store ? `${store.store_group || 'General'} / ${store.name}` : 'this store';
-  const typed = prompt(`You are deleting sensitive store data. This action will permanently delete ${name} and all linked attendance, sales, report, and selfie records. This cannot be undone.
+  const name = store ? `${store.store_group || 'General'} / ${store.name} (${store.code})` : 'this store';
+  const typed = prompt(`This will permanently delete ${name} and all linked store attendance/sales data.
 
-To confirm, please write exactly: Confirm`);
+To continue, please write exactly: Confirm`);
   if (typed === null) return;
-  if (typed.trim() !== 'Confirm') {
-    alert('Deletion cancelled. You must write exactly Confirm to delete the store.');
+  if (String(typed || '').trim().toLowerCase() !== 'confirm') {
+    alert('Deletion not confirmed. Please type Confirm to continue.');
     return;
   }
   try {
-    const result = await api(`/api/admin/stores/${id}`, { method: 'DELETE', body: JSON.stringify({ confirm: 'Confirm' }) });
-    alert(result.message || 'Store and linked data permanently deleted.');
+    const result = await api(`/api/admin/stores/${id}`, { method: 'DELETE' });
+    alert(result.message || 'Store permanently deleted.');
     await loadStores();
     await loadUsers();
     await loadAttendance();

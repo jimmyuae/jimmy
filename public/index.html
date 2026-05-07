@@ -11,8 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="Jimmy">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" type="image/svg+xml" href="/assets/jimmy-icon.svg">
-  <link rel="shortcut icon" href="/assets/jimmy-icon.svg">
+  <link rel="icon" type="image/svg+xml" href="/assets/jimmy-logo.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32.png">
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
   <link rel="mask-icon" href="/assets/jimmy-logo-mask.svg" color="#0c47a5">
@@ -71,6 +70,29 @@
         </div>
 
         <button class="login-submit" type="submit">Login</button>
+        <button class="secondary signup-toggle" type="button" onclick="showSignupForm()">Create Merchandiser Account</button>
+      </form>
+    </section>
+
+    <section class="login-card signup-card" id="signupCard" aria-label="Merchandiser signup" style="display:none">
+      <img class="login-brand-img" src="/assets/jimmy-logo.svg" alt="Jimmy logo">
+      <div class="login-heading-block">
+        <h1>Merchandiser Sign Up</h1>
+        <p>Create your account request. Admin approval is required before login.</p>
+      </div>
+      <div id="signupError" class="error login-error"></div>
+      <div id="signupSuccess" class="success login-error"></div>
+      <form id="signupForm" class="mobile-login-form signup-form-grid">
+        <div class="login-field-group"><label>Profile Photo</label><input id="signupPhoto" type="file" accept="image/*"></div>
+        <div class="login-field-group"><label>Name</label><input id="signupName" type="text" required placeholder="Full name"></div>
+        <div class="login-field-group"><label>Email</label><input id="signupEmail" type="email" required placeholder="email@example.com"></div>
+        <div class="login-field-group"><label>Phone Number</label><input id="signupPhone" type="tel" required placeholder="Phone number"></div>
+        <div class="login-field-group"><label>Employee ID</label><input id="signupEmployeeId" type="text" required placeholder="EMP-002"></div>
+        <div class="login-field-group"><label>Password</label><input id="signupPassword" type="password" required minlength="6" placeholder="Minimum 6 characters"></div>
+        <div class="login-field-group"><label>Mall</label><select id="signupMall" required></select></div>
+        <div class="login-field-group"><label>Store</label><select id="signupStore" required></select></div>
+        <button class="login-submit" type="submit">Create Account Request</button>
+        <button class="secondary signup-toggle" type="button" onclick="showLoginForm()">Back to Login</button>
       </form>
     </section>
   </main>
@@ -80,6 +102,55 @@
     const passwordField = document.getElementById('password');
     document.getElementById('togglePassword').addEventListener('click', () => {
       passwordField.type = passwordField.type === 'password' ? 'text' : 'password';
+    });
+
+    let publicStores = [];
+    function showSignupForm() {
+      document.querySelector('.login-card[aria-label="Jimmy login"]').style.display = 'none';
+      document.getElementById('signupCard').style.display = 'block';
+      loadSignupStores();
+    }
+    function showLoginForm() {
+      document.getElementById('signupCard').style.display = 'none';
+      document.querySelector('.login-card[aria-label="Jimmy login"]').style.display = 'block';
+    }
+    async function loadSignupStores() {
+      const data = await api('/api/public/stores', {}, false);
+      publicStores = data.stores || [];
+      const malls = [...new Set(publicStores.map(s => s.store_group || 'General'))].sort();
+      signupMall.innerHTML = '<option value="">Select mall</option>' + malls.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+      renderSignupStores();
+    }
+    function renderSignupStores() {
+      const mall = signupMall.value;
+      const stores = publicStores.filter(s => (s.store_group || 'General') === mall);
+      signupStore.innerHTML = '<option value="">Select store</option>' + stores.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+    }
+    signupMall.addEventListener('change', renderSignupStores);
+    document.getElementById('signupForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      signupError.style.display = 'none';
+      signupSuccess.style.display = 'none';
+      try {
+        const photo = signupPhoto.files[0] ? await fileToDataUrl(signupPhoto.files[0]) : null;
+        const payload = {
+          name: signupName.value,
+          email: signupEmail.value,
+          phone: signupPhone.value,
+          employee_code: signupEmployeeId.value,
+          password: signupPassword.value,
+          assigned_store_id: signupStore.value,
+          profile_image: photo
+        };
+        const data = await api('/api/auth/signup', { method: 'POST', body: JSON.stringify(payload) }, false);
+        signupSuccess.textContent = data.message || 'Signup request submitted. Please wait for Admin approval.';
+        signupSuccess.style.display = 'block';
+        signupForm.reset();
+        renderSignupStores();
+      } catch (err) {
+        signupError.textContent = err.message;
+        signupError.style.display = 'block';
+      }
     });
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
