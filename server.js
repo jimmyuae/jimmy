@@ -59,6 +59,37 @@ function nowIso() { return new Date().toISOString(); }
 function slugCode(value) {
   return String(value || 'store').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 42) || `STORE-${Date.now()}`;
 }
+async function uniqueStoreCode(base) {
+  const rootCode = slugCode(base || 'STORE');
+  let code = rootCode;
+  let i = 2;
+  while (await one('SELECT id FROM stores WHERE lower(code)=lower($1) LIMIT 1', [code])) {
+    code = `${rootCode}-${i}`;
+    i += 1;
+  }
+  return code;
+}
+async function findOrCreateSignupStore(storeGroup, storeName) {
+  const safeGroup = String(storeGroup || '').trim();
+  const safeName = String(storeName || '').trim();
+  if (!safeGroup || !safeName) throw new Error('Mall name and store name are required.');
+  const existing = await one(
+    `SELECT id FROM stores
+     WHERE active=1 AND lower(store_group)=lower($1) AND lower(name)=lower($2)
+     LIMIT 1`,
+    [safeGroup, safeName]
+  );
+  if (existing) return existing.id;
+  const ts = nowIso();
+  const code = await uniqueStoreCode(`${safeGroup}-${safeName}`);
+  const row = await one(
+    `INSERT INTO stores (store_group,name,code,latitude,longitude,radius_m,location_locked,opening_time,closing_time,active,created_at,updated_at)
+     VALUES ($1,$2,$3,0,0,$4,0,'10:00','22:00',1,$5,$6)
+     RETURNING id`,
+    [safeGroup, safeName, code, STORE_RADIUS_M, ts, ts]
+  );
+  return row.id;
+}
 async function q(text, params = []) { return pool.query(text, params); }
 async function one(text, params = []) { const r = await q(text, params); return r.rows[0] || null; }
 async function all(text, params = []) { const r = await q(text, params); return r.rows; }
@@ -243,6 +274,22 @@ async function ensureSchema() {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS password_reset_requests (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      requested_password_hash TEXT NOT NULL,
+      identifier_snapshot TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      requested_at TEXT NOT NULL,
+      reviewed_by INTEGER REFERENCES users(id),
+      reviewed_at TEXT,
+      review_note TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_password_reset_requests_status ON password_reset_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_password_reset_requests_user_id ON password_reset_requests(user_id);
+
     CREATE TABLE IF NOT EXISTS community_messages (
       id SERIAL PRIMARY KEY,
       sender_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -282,6 +329,8 @@ async function ensureSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS approval_reviewed_by INTEGER;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS approval_reviewed_at TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS approval_note TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS requested_store_group TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS requested_store_name TEXT;
     UPDATE users SET approval_status='approved' WHERE approval_status IS NULL;
   `);
 }
@@ -479,7 +528,7 @@ async function serializeChatMessage(row) {
   };
 }
 async function cleanupExpiredChatMessages() {
-  const expired = await all(`SELECT id,file_path FROM community_messages WHERE created_at::timestamptz < NOW() - INTERVAL '30 days'`);
+  const expired = await all(`SELECT id,file_path FROM community_messages WHERE created_at::timestamptz < NOW() - INTERVAL '7 days'`);
   const paths = expired.map(r => r.file_path).filter(Boolean);
   if (expired.length) {
     await q('DELETE FROM community_messages WHERE id = ANY($1::int[])', [expired.map(r => r.id)]);
@@ -616,22 +665,46 @@ app.get('/api/public/stores', async (req,res)=>{
 
 app.post('/api/auth/signup', async (req,res)=>{
   try {
-    const {name,email,phone,employee_code,password,assigned_store_id,profile_image}=req.body||{};
-    if(!name || !email || !phone || !employee_code || !password || !assigned_store_id) return res.status(400).json({error:'Name, email, phone number, employee ID, password, mall, and store are required.'});
+    const {name,email,phone,employee_code,password,assigned_store_id,store_group,store_name,profile_image}=req.body||{};
+    const safeGroup = String(store_group || '').trim();
+    const safeStoreName = String(store_name || '').trim();
+    if(!name || !email || !phone || !employee_code || !password || !safeGroup || !safeStoreName) return res.status(400).json({error:'Name, email, phone number, employee ID, password, mall name, and store name are required.'});
     if(String(password).length < 6) return res.status(400).json({error:'Password must be at least 6 characters.'});
-    const store = await one('SELECT id FROM stores WHERE id=$1 AND active=1', [assigned_store_id]);
-    if(!store) return res.status(400).json({error:'Please select a valid store from the list.'});
+    let selectedStoreId = null;
+    if (assigned_store_id) {
+      const store = await one('SELECT id, store_group, name FROM stores WHERE id=$1 AND active=1', [assigned_store_id]);
+      if(store) selectedStoreId = store.id;
+    }
     const existing = await one('SELECT id, approval_status FROM users WHERE lower(email)=lower($1) OR lower(employee_code)=lower($2) LIMIT 1', [email, employee_code]);
     if(existing) return res.status(409).json({error:'An account with this email or employee ID already exists.'});
     const imagePath = profile_image ? await saveDataUrlImage(profile_image, 'profile-signup') : null;
     const ts=nowIso();
-    const row = await one(`INSERT INTO users (name,email,phone,employee_code,password_hash,role,active,assigned_store_id,profile_image_path,approval_status,approval_requested_at,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,'worker',0,$6,$7,'pending',$8,$9,$10) RETURNING id`, [String(name).trim(), String(email).trim().toLowerCase(), String(phone).trim(), String(employee_code).trim(), bcrypt.hashSync(password,10), assigned_store_id, imagePath, ts, ts, ts]);
+    const row = await one(`INSERT INTO users (name,email,phone,employee_code,password_hash,role,active,assigned_store_id,profile_image_path,approval_status,approval_requested_at,requested_store_group,requested_store_name,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,'worker',0,$6,$7,'pending',$8,$9,$10,$11,$12) RETURNING id`, [String(name).trim(), String(email).trim().toLowerCase(), String(phone).trim(), String(employee_code).trim(), bcrypt.hashSync(password,10), selectedStoreId, imagePath, ts, safeGroup, safeStoreName, ts, ts]);
     res.json({ok:true, request_id:row.id, message:'Your merchandiser account request has been submitted. Please wait for Admin approval before login.'});
   } catch(e) {
     if(e.code === '23505') return res.status(409).json({error:'An account with this email or employee ID already exists.'});
     res.status(400).json({error:e.message});
   }
 });
+
+
+app.post('/api/auth/password-reset-request', async (req,res)=>{
+  try {
+    const {identifier,new_password}=req.body||{};
+    const safeIdentifier = String(identifier || '').trim();
+    if(!safeIdentifier || !new_password) return res.status(400).json({error:'Valid email or phone number and new password are required.'});
+    if(String(new_password).length < 6) return res.status(400).json({error:'New password must be at least 6 characters.'});
+    const user = await one(`SELECT id,name,email,phone,employee_code,approval_status,active FROM users WHERE lower(email)=lower($1) OR phone=$1 LIMIT 1`, [safeIdentifier]);
+    if(!user) return res.status(404).json({error:'No account found with this email or phone number.'});
+    if(user.approval_status !== 'approved' || !Number(user.active)) return res.status(400).json({error:'This account is not active. Please contact Admin.'});
+    const existing = await one("SELECT id FROM password_reset_requests WHERE user_id=$1 AND status='pending' ORDER BY id DESC LIMIT 1", [user.id]);
+    if(existing) return res.status(409).json({error:'A password reset request is already pending for this account.'});
+    const ts = nowIso();
+    const row = await one(`INSERT INTO password_reset_requests (user_id,requested_password_hash,identifier_snapshot,status,requested_at,created_at,updated_at) VALUES ($1,$2,$3,'pending',$4,$5,$6) RETURNING id`, [user.id, bcrypt.hashSync(String(new_password),10), safeIdentifier, ts, ts, ts]);
+    res.json({ok:true, request_id:row.id, message:'Password reset request submitted. Admin or Manager approval is required before the new password becomes active.'});
+  } catch(e) { res.status(400).json({error:e.message}); }
+});
+
 
 app.post('/api/auth/login', async (req,res)=>{ try { const {identifier,email,password}=req.body||{}; const loginId=String(identifier||email||'').trim(); if(!loginId||!password) return res.status(400).json({error:'Merchandiser/Admin ID and password are required.'}); const user = await one('SELECT * FROM users WHERE lower(email)=lower($1) OR lower(employee_code)=lower($1) LIMIT 1', [loginId]); if(!user || !bcrypt.compareSync(password, user.password_hash)) return res.status(401).json({error:'Invalid login details.'}); const approval = user.approval_status || 'approved'; if(approval === 'pending') return res.status(403).json({error:'Your account is pending admin approval.'}); if(approval === 'declined') return res.status(403).json({error:'Your account request was declined. Please contact Admin.'}); if(!Number(user.active)) return res.status(403).json({error:'This account is inactive.'}); await recordLoginEvent(user.id,'login',req); const fresh=await one('SELECT * FROM users WHERE id=$1',[user.id]); res.json({token:signToken(fresh), user: await serializeUser(fresh)}); } catch(e){ res.status(500).json({error:e.message}); }});
 app.post('/api/auth/logout', auth, async (req,res)=>{ const loggedOutAt=await recordLoginEvent(req.user.id,'logout',req); res.json({ok:true, logged_out_at:loggedOutAt}); });
@@ -747,7 +820,7 @@ app.get('/api/admin/work-status', auth, requireAdmin, async (req,res)=>{
 
 app.get('/api/admin/signup-requests', auth, requireAdmin, async (req,res)=>{
   try {
-    const rows = await all(`SELECT u.id,u.name,u.email,u.phone,u.employee_code,u.role,u.active,u.assigned_store_id,u.profile_image_path,u.approval_status,u.approval_requested_at,u.approval_reviewed_at,u.approval_note,s.name AS store_name,s.store_group FROM users u LEFT JOIN stores s ON s.id=u.assigned_store_id WHERE u.role='worker' AND u.approval_status IN ('pending','declined') ORDER BY CASE WHEN u.approval_status='pending' THEN 0 ELSE 1 END, u.approval_requested_at DESC NULLS LAST, u.id DESC`);
+    const rows = await all(`SELECT u.id,u.name,u.email,u.phone,u.employee_code,u.role,u.active,u.assigned_store_id,u.profile_image_path,u.approval_status,u.approval_requested_at,u.approval_reviewed_at,u.approval_note,u.requested_store_group,u.requested_store_name,COALESCE(s.name,u.requested_store_name) AS store_name,COALESCE(s.store_group,u.requested_store_group) AS store_group,CASE WHEN u.assigned_store_id IS NULL THEN 1 ELSE 0 END AS needs_store_creation FROM users u LEFT JOIN stores s ON s.id=u.assigned_store_id WHERE u.role='worker' AND u.approval_status IN ('pending','declined') ORDER BY CASE WHEN u.approval_status='pending' THEN 0 ELSE 1 END, u.approval_requested_at DESC NULLS LAST, u.id DESC`);
     res.json({requests: await attachSignedUsers(rows)});
   } catch(e) { res.status(500).json({error:e.message}); }
 });
@@ -756,9 +829,16 @@ app.patch('/api/admin/signup-requests/:id/approve', auth, requireAdmin, async (r
   try {
     const target = await one("SELECT * FROM users WHERE id=$1 AND role='worker'", [req.params.id]);
     if(!target) return res.status(404).json({error:'Signup request not found.'});
+    let storeId = target.assigned_store_id;
+    if(!storeId) {
+      storeId = await findOrCreateSignupStore(target.requested_store_group, target.requested_store_name);
+    }
     const ts=nowIso();
-    await q("UPDATE users SET approval_status='approved', active=1, approval_reviewed_by=$1, approval_reviewed_at=$2, approval_note=NULL, updated_at=$3 WHERE id=$4", [req.user.id, ts, ts, req.params.id]);
-    res.json({ok:true, message:'Merchandiser account approved. The user can now login.'});
+    await q("UPDATE users SET approval_status='approved', active=1, assigned_store_id=$1, approval_reviewed_by=$2, approval_reviewed_at=$3, approval_note=NULL, updated_at=$4 WHERE id=$5", [storeId, req.user.id, ts, ts, req.params.id]);
+    await q(`INSERT INTO community_messages (sender_id,sender_name_snapshot,sender_role_snapshot,sender_code_snapshot,message_type,body,created_at,updated_at)
+             VALUES (NULL,'Jimmy Community','system','JIMMY','text',$1,$2,$3)`,
+      [`Welcome ${target.name} to Jimmy Community. We are pleased to have you as part of the team. Please join us in welcoming our new team member.`, ts, ts]);
+    res.json({ok:true, message:'Merchandiser account approved. The user can now login, and a welcome message has been posted in Jimmy Community.'});
   } catch(e) { res.status(400).json({error:e.message}); }
 });
 
@@ -769,6 +849,40 @@ app.patch('/api/admin/signup-requests/:id/decline', auth, requireAdmin, async (r
     const ts=nowIso();
     await q("UPDATE users SET approval_status='declined', active=0, approval_reviewed_by=$1, approval_reviewed_at=$2, approval_note=$3, updated_at=$4 WHERE id=$5", [req.user.id, ts, req.body?.note || null, ts, req.params.id]);
     res.json({ok:true, message:'Merchandiser signup request declined.'});
+  } catch(e) { res.status(400).json({error:e.message}); }
+});
+
+app.get('/api/admin/password-reset-requests', auth, requireAdmin, async (req,res)=>{
+  try {
+    const rows = await all(`SELECT pr.id,pr.user_id,pr.identifier_snapshot,pr.status,pr.requested_at,pr.reviewed_at,pr.review_note,u.name,u.email,u.phone,u.employee_code,u.role,u.profile_image_path
+                            FROM password_reset_requests pr
+                            JOIN users u ON u.id=pr.user_id
+                            WHERE pr.status IN ('pending','declined')
+                            ORDER BY CASE WHEN pr.status='pending' THEN 0 ELSE 1 END, pr.requested_at DESC, pr.id DESC`);
+    res.json({requests: await attachSignedUsers(rows)});
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+app.patch('/api/admin/password-reset-requests/:id/approve', auth, requireAdmin, async (req,res)=>{
+  try {
+    const target = await one(`SELECT pr.*,u.name,u.email,u.employee_code FROM password_reset_requests pr JOIN users u ON u.id=pr.user_id WHERE pr.id=$1`, [req.params.id]);
+    if(!target) return res.status(404).json({error:'Password reset request not found.'});
+    if(target.status !== 'pending') return res.status(400).json({error:'This request has already been reviewed.'});
+    const ts=nowIso();
+    await q('UPDATE users SET password_hash=$1, updated_at=$2 WHERE id=$3', [target.requested_password_hash, ts, target.user_id]);
+    await q("UPDATE password_reset_requests SET status='approved', reviewed_by=$1, reviewed_at=$2, review_note=NULL, updated_at=$3 WHERE id=$4", [req.user.id, ts, ts, req.params.id]);
+    res.json({ok:true, message:`Password reset approved for ${target.name}.`});
+  } catch(e) { res.status(400).json({error:e.message}); }
+});
+
+app.patch('/api/admin/password-reset-requests/:id/decline', auth, requireAdmin, async (req,res)=>{
+  try {
+    const target = await one(`SELECT pr.*,u.name FROM password_reset_requests pr JOIN users u ON u.id=pr.user_id WHERE pr.id=$1`, [req.params.id]);
+    if(!target) return res.status(404).json({error:'Password reset request not found.'});
+    if(target.status !== 'pending') return res.status(400).json({error:'This request has already been reviewed.'});
+    const ts=nowIso();
+    await q("UPDATE password_reset_requests SET status='declined', reviewed_by=$1, reviewed_at=$2, review_note=$3, updated_at=$4 WHERE id=$5", [req.user.id, ts, req.body?.note || null, ts, req.params.id]);
+    res.json({ok:true, message:`Password reset request declined for ${target.name}.`});
   } catch(e) { res.status(400).json({error:e.message}); }
 });
 
@@ -908,7 +1022,7 @@ app.get('/api/chat/messages', auth, async (req,res)=>{
       FROM community_messages m
       LEFT JOIN users u ON u.id=m.sender_id
       LEFT JOIN community_messages r ON r.id=m.reply_to_message_id
-      WHERE m.id > $1 AND m.created_at::timestamptz >= NOW() - INTERVAL '30 days'
+      WHERE m.id > $1 AND m.created_at::timestamptz >= NOW() - INTERVAL '7 days'
       ORDER BY m.id ASC LIMIT 120`, [afterId, req.user.id]);
     res.json({ messages: await Promise.all(rows.map(serializeChatMessage)) });
   } catch(e) { res.status(500).json({error:e.message}); }
@@ -1021,7 +1135,7 @@ app.get('/api/chat/users/:id/monthly-report', auth, async (req,res)=>{
 app.get('/api/reports/:reportId/download', auth, async (req,res)=>{ const report=await one('SELECT * FROM monthly_attendance_reports WHERE report_id=$1',[req.params.reportId]); if(!report) return res.status(404).json({error:'Report not found.'}); const { data, error } = await supabase.storage.from(SUPABASE_STORAGE_BUCKET).download(report.pdf_url); if(error) return res.status(404).json({error:'PDF file missing from storage.'}); const buffer=Buffer.from(await data.arrayBuffer()); res.setHeader('Content-Type','application/pdf'); res.setHeader('Content-Disposition',`attachment; filename="${report.report_id}.pdf"`); res.send(buffer); });
 app.get('/verify-report/:reportId', async (req,res)=>{ const report=await one('SELECT mr.*,u.name AS worker_name,u.employee_code FROM monthly_attendance_reports mr JOIN users u ON u.id=mr.worker_id WHERE mr.report_id=$1',[req.params.reportId]); if(!report) return res.status(404).send('<h1>Report not found</h1><p>This report ID does not exist.</p>'); res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Verify Report</title><style>body{font-family:Arial,sans-serif;background:#f5f7fb;margin:0;padding:35px;color:#111}.card{max-width:760px;background:#fff;margin:auto;padding:28px;border-radius:18px;box-shadow:0 10px 30px #0001}.valid{color:#087a2e}img{width:170px}</style></head><body><div class="card"><img src="/assets/jimmy-logo.svg"><h1 class="valid">Valid Jimmy Report</h1><p><b>Report ID:</b> ${report.report_id}</p><p><b>Merchandiser:</b> ${report.worker_name} (${report.employee_code||''})</p><p><b>Month:</b> ${report.month}/${report.year}</p><p><b>Status:</b> ${report.status}</p><p><b>Generated:</b> ${report.generated_at}</p><p><b>Hash:</b> ${report.pdf_hash}</p></div></body></html>`); });
 
-cron.schedule('17 * * * *', async ()=>{ try { const n = await cleanupExpiredChatMessages(); if(n) console.log(`Expired chat messages deleted: ${n}`); } catch(e){ console.error('Chat cleanup failed:', e); } });
+cron.schedule('17 * * * *', async ()=>{ try { const n = await cleanupExpiredChatMessages(); if(n) console.log(`Expired 7-day chat messages deleted: ${n}`); } catch(e){ console.error('Chat cleanup failed:', e); } });
 cron.schedule('5 0 1 * *', async ()=>{ const prev=dayjs().subtract(1,'month'); try { await generateMonthlyReports(prev.month()+1, prev.year()); console.log('Monthly reports generated successfully.'); } catch(e){ console.error('Monthly report generation failed:', e); } });
 app.get('*',(req,res)=>res.sendFile(path.join(ROOT,'public','index.html')));
 

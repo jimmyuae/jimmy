@@ -35,6 +35,7 @@
         <a href="#profile" data-section-link>Profile</a>
         <a href="#workers" data-section-link>Merchandisers</a>
         <a href="#signupRequests" data-section-link>Signup Requests</a>
+        <a href="#passwordRequests" data-section-link>Password Requests</a>
         <a href="#stores" data-section-link>Stores</a>
         <a href="#products" data-section-link>Products</a>
         <a href="#attendance" data-section-link>Attendance</a>
@@ -60,6 +61,7 @@
           <div class="stat"><span class="muted">Merchandisers On Duty Now</span><b id="statWorkingNow">0</b></div>
           <div class="stat"><span class="muted">Merchandisers Finished Today</span><b id="statFinishedToday">0</b></div>
           <div class="stat"><span class="muted">Pending Signup Requests</span><b id="statPendingRequests">0</b></div>
+          <div class="stat"><span class="muted">Pending Password Requests</span><b id="statPendingPasswordRequests">0</b></div>
           <div class="stat"><span class="muted">Stores</span><b id="statStores">0</b></div>
           <div class="stat"><span class="muted">Products</span><b id="statProducts">0</b></div>
           <div class="stat"><span class="muted">Attendance Logs</span><b id="statAttendance">0</b></div>
@@ -120,12 +122,22 @@
       <section id="signupRequests" class="section">
         <div class="card">
           <h2>Pending Merchandiser Requests</h2>
-          <p class="hint">Merchandisers can submit account requests from the main login page. Admin or Manager must approve before they can login.</p>
+          <p class="hint">Merchandisers can submit account requests from the main login page. Admin or Manager must approve before they can login. If they typed a new mall/store, the store will be created automatically after approval.</p>
           <div class="table-wrap"><table><thead><tr><th>Profile</th><th>Name</th><th>Email</th><th>Phone</th><th>Employee ID</th><th>Mall</th><th>Store</th><th>Requested</th><th>Status</th><th>Action</th></tr></thead><tbody id="signupRequestRows"></tbody></table></div>
         </div>
       </section>
 
-      <section id="stores" class="section">
+      
+      <section id="passwordRequests" class="section">
+        <div class="card">
+          <h2>Password Reset Requests</h2>
+          <p class="hint">Users can request a new password using their registered email or phone number. The new password becomes active only after Admin or Manager approval.</p>
+          <div class="table-wrap"><table><thead><tr><th>Profile</th><th>Name</th><th>Email</th><th>Phone</th><th>Merchandiser/Admin ID</th><th>Role</th><th>Requested With</th><th>Requested</th><th>Status</th><th>Action</th></tr></thead><tbody id="passwordRequestRows"></tbody></table></div>
+        </div>
+      </section>
+
+
+<section id="stores" class="section">
         <div class="grid cols-2">
           <div class="card">
             <h2>Add Store</h2>

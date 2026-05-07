@@ -71,6 +71,7 @@
 
         <button class="login-submit" type="submit">Login</button>
         <button class="secondary signup-toggle" type="button" onclick="showSignupForm()">Create Merchandiser Account</button>
+        <button class="secondary signup-toggle" type="button" onclick="showResetForm()">Request Password Reset</button>
       </form>
     </section>
 
@@ -89,9 +90,26 @@
         <div class="login-field-group"><label>Phone Number</label><input id="signupPhone" type="tel" required placeholder="Phone number"></div>
         <div class="login-field-group"><label>Employee ID</label><input id="signupEmployeeId" type="text" required placeholder="EMP-002"></div>
         <div class="login-field-group"><label>Password</label><input id="signupPassword" type="password" required minlength="6" placeholder="Minimum 6 characters"></div>
-        <div class="login-field-group"><label>Mall</label><select id="signupMall" required></select></div>
-        <div class="login-field-group"><label>Store</label><select id="signupStore" required></select></div>
+        <div class="login-field-group"><label>Mall / Location Group</label><input id="signupMall" list="signupMallOptions" required placeholder="Type or select mall name"><datalist id="signupMallOptions"></datalist></div>
+        <div class="login-field-group"><label>Store Name</label><input id="signupStore" list="signupStoreOptions" required placeholder="Type or select store name"><datalist id="signupStoreOptions"></datalist></div>
         <button class="login-submit" type="submit">Create Account Request</button>
+        <button class="secondary signup-toggle" type="button" onclick="showLoginForm()">Back to Login</button>
+      </form>
+    </section>
+
+    <section class="login-card signup-card" id="resetCard" aria-label="Password reset request" style="display:none">
+      <img class="login-brand-img" src="/assets/jimmy-logo.svg" alt="Jimmy logo">
+      <div class="login-heading-block">
+        <h1>Request Password Reset</h1>
+        <p>Enter your registered email or phone number and the new password. Admin approval is required.</p>
+      </div>
+      <div id="resetError" class="error login-error"></div>
+      <div id="resetSuccess" class="success login-error"></div>
+      <form id="resetForm" class="mobile-login-form signup-form-grid">
+        <div class="login-field-group"><label>Email or Phone Number</label><input id="resetIdentifier" type="text" required placeholder="Email or phone number"></div>
+        <div class="login-field-group"><label>New Password</label><input id="resetPassword" type="password" required minlength="6" placeholder="Minimum 6 characters"></div>
+        <div class="login-field-group"><label>Confirm New Password</label><input id="resetPasswordConfirm" type="password" required minlength="6" placeholder="Repeat new password"></div>
+        <button class="login-submit" type="submit">Submit Reset Request</button>
         <button class="secondary signup-toggle" type="button" onclick="showLoginForm()">Back to Login</button>
       </form>
     </section>
@@ -107,49 +125,78 @@
     let publicStores = [];
     function showSignupForm() {
       document.querySelector('.login-card[aria-label="Jimmy login"]').style.display = 'none';
+      document.getElementById('resetCard').style.display = 'none';
       document.getElementById('signupCard').style.display = 'block';
       loadSignupStores();
     }
+    function showResetForm() {
+      document.querySelector('.login-card[aria-label="Jimmy login"]').style.display = 'none';
+      document.getElementById('signupCard').style.display = 'none';
+      document.getElementById('resetCard').style.display = 'block';
+    }
     function showLoginForm() {
       document.getElementById('signupCard').style.display = 'none';
+      document.getElementById('resetCard').style.display = 'none';
       document.querySelector('.login-card[aria-label="Jimmy login"]').style.display = 'block';
     }
     async function loadSignupStores() {
       const data = await api('/api/public/stores', {}, false);
       publicStores = data.stores || [];
-      const malls = [...new Set(publicStores.map(s => s.store_group || 'General'))].sort();
-      signupMall.innerHTML = '<option value="">Select mall</option>' + malls.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
-      renderSignupStores();
+      const malls = [...new Set(['OASIS MALL', 'Dubai Mall', 'City Centre Deira', 'Mall of the Emirates', ...publicStores.map(s => s.store_group || 'General')])].sort();
+      const stores = [...new Set(['Emax', 'Sharaf DG', 'Carrefour', ...publicStores.map(s => s.name).filter(Boolean)])].sort();
+      signupMallOptions.innerHTML = malls.map(m => `<option value="${escapeHtml(m)}"></option>`).join('');
+      signupStoreOptions.innerHTML = stores.map(s => `<option value="${escapeHtml(s)}"></option>`).join('');
     }
-    function renderSignupStores() {
-      const mall = signupMall.value;
-      const stores = publicStores.filter(s => (s.store_group || 'General') === mall);
-      signupStore.innerHTML = '<option value="">Select store</option>' + stores.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
-    }
-    signupMall.addEventListener('change', renderSignupStores);
     document.getElementById('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       signupError.style.display = 'none';
       signupSuccess.style.display = 'none';
       try {
         const photo = signupPhoto.files[0] ? await fileToDataUrl(signupPhoto.files[0]) : null;
+        const mall = signupMall.value.trim();
+        const storeName = signupStore.value.trim();
+        const matchedStore = publicStores.find(s => 
+          (s.store_group || 'General').toLowerCase() === mall.toLowerCase() &&
+          (s.name || '').toLowerCase() === storeName.toLowerCase()
+        );
         const payload = {
           name: signupName.value,
           email: signupEmail.value,
           phone: signupPhone.value,
           employee_code: signupEmployeeId.value,
           password: signupPassword.value,
-          assigned_store_id: signupStore.value,
+          assigned_store_id: matchedStore ? matchedStore.id : null,
+          store_group: mall,
+          store_name: storeName,
           profile_image: photo
         };
         const data = await api('/api/auth/signup', { method: 'POST', body: JSON.stringify(payload) }, false);
         signupSuccess.textContent = data.message || 'Signup request submitted. Please wait for Admin approval.';
         signupSuccess.style.display = 'block';
         signupForm.reset();
-        renderSignupStores();
+        loadSignupStores();
       } catch (err) {
         signupError.textContent = err.message;
         signupError.style.display = 'block';
+      }
+    });
+
+    document.getElementById('resetForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      resetError.style.display = 'none';
+      resetSuccess.style.display = 'none';
+      try {
+        if (resetPassword.value !== resetPasswordConfirm.value) throw new Error('New password and confirmation password do not match.');
+        const data = await api('/api/auth/password-reset-request', {
+          method: 'POST',
+          body: JSON.stringify({ identifier: resetIdentifier.value, new_password: resetPassword.value })
+        }, false);
+        resetSuccess.textContent = data.message || 'Password reset request submitted. Please wait for Admin approval.';
+        resetSuccess.style.display = 'block';
+        resetForm.reset();
+      } catch (err) {
+        resetError.textContent = err.message;
+        resetError.style.display = 'block';
       }
     });
 

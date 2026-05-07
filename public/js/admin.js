@@ -6,6 +6,7 @@ let usersCache = [];
 let attendanceCache = [];
 let adminCache = null;
 let signupRequestsCache = [];
+let passwordRequestsCache = [];
 
 async function bootAdmin() {
   const me = await api('/api/me');
@@ -49,6 +50,7 @@ async function refreshAll() {
   await loadStores();
   await loadUsers();
   await loadSignupRequests();
+  await loadPasswordResetRequests();
   await loadProducts();
   await loadAttendance();
   await loadWorkStatus();
@@ -125,7 +127,7 @@ function renderSignupRequests() {
       <td>${escapeHtml(r.phone || '-')}</td>
       <td>${escapeHtml(r.employee_code || '-')}</td>
       <td>${escapeHtml(r.store_group || '-')}</td>
-      <td>${escapeHtml(r.store_name || '-')}</td>
+      <td>${escapeHtml(r.store_name || '-')}${Number(r.needs_store_creation) ? '<br><span class="badge warn">New store request</span>' : ''}</td>
       <td>${fmtDate(r.approval_requested_at)}</td>
       <td><span class="badge ${r.approval_status === 'pending' ? 'warn' : 'bad'}">${escapeHtml(r.approval_status || 'pending')}</span></td>
       <td>${r.approval_status === 'pending' ? `<div class="toolbar"><button class="small" onclick="approveSignup(${r.id})">Approve</button><button class="small danger" onclick="declineSignup(${r.id})">Decline</button></div>` : '<span class="muted">Reviewed</span>'}</td>
@@ -141,6 +143,7 @@ async function approveSignup(id) {
     alert(result.message || 'Signup request approved.');
     await loadSignupRequests();
     await loadUsers();
+    await loadStores();
   } catch (err) { alert(err.message); }
 }
 
