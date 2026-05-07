@@ -67,10 +67,19 @@ async function loadProducts() {
   salesItems.innerHTML = products.map(p => `
     <tr data-product-id="${p.id}">
       <td><span class="model-name">${escapeHtml(p.model)}</span><input class="price" type="hidden" value="${Number(p.default_price || 0)}"></td>
-      <td><input class="qty" type="number" min="0" value="0" oninput="recalcSales()"></td>
-      <td class="amount value">0.00</td>
+      <td><input class="qty" type="number" min="0" value="0" oninput="syncValueFromQty(this)"></td>
+      <td><input class="value-input" type="number" min="0" step="0.01" value="0.00" oninput="recalcSales()"></td>
     </tr>
   `).join('');
+  recalcSales();
+}
+
+function syncValueFromQty(input) {
+  const tr = input.closest('tr');
+  const q = Math.max(0, Number(input.value || 0));
+  const price = Math.max(0, Number(tr.querySelector('.price').value || 0));
+  const valueInput = tr.querySelector('.value-input');
+  valueInput.value = (q * price).toFixed(2);
   recalcSales();
 }
 
@@ -78,9 +87,7 @@ function recalcSales() {
   let qty = 0, value = 0;
   document.querySelectorAll('#salesItems tr').forEach(tr => {
     const q = Math.max(0, Number(tr.querySelector('.qty').value || 0));
-    const price = Math.max(0, Number(tr.querySelector('.price').value || 0));
-    const rowValue = q * price;
-    tr.querySelector('.value').textContent = rowValue.toFixed(2);
+    const rowValue = Math.max(0, Number(tr.querySelector('.value-input').value || 0));
     qty += q;
     value += rowValue;
   });
@@ -376,7 +383,13 @@ async function checkIn() {
   } catch (err) { alert(err.message); }
 }
 function buildSalesItems() {
-  return [...document.querySelectorAll('#salesItems tr')].map(tr => ({ product_id: Number(tr.dataset.productId), quantity: Number(tr.querySelector('.qty').value || 0), unit_price: Number(tr.querySelector('.price').value || 0) }));
+  return [...document.querySelectorAll('#salesItems tr')].map(tr => {
+    const quantity = Math.max(0, Number(tr.querySelector('.qty').value || 0));
+    const totalValue = Math.max(0, Number(tr.querySelector('.value-input').value || 0));
+    const defaultPrice = Math.max(0, Number(tr.querySelector('.price').value || 0));
+    const unitPrice = quantity > 0 ? totalValue / quantity : defaultPrice;
+    return { product_id: Number(tr.dataset.productId), quantity, unit_price: unitPrice };
+  });
 }
 let noSaleReasonResolver = null;
 function askNoSaleReason() {
@@ -415,6 +428,7 @@ async function checkOut() {
     showLocationResult(data.location);
     alert(data.location.warning ? `Checked out with location warning. Distance: ${data.location.distance_m}m. Total value: ${Number(data.total_value).toFixed(2)}.` : `Checked out successfully. Total value: ${Number(data.total_value).toFixed(2)}. Work time: ${fmtMinutes(data.total_work_minutes)}.`);
     document.querySelectorAll('#salesItems .qty').forEach(i => i.value = 0);
+    document.querySelectorAll('#salesItems .value-input').forEach(i => i.value = '0.00');
     totalCustomers.value = 0; convertedCustomers.value = 0; latestImage = null; latestLocation = null; showLiveCameraFrame(); recalcSales();
     await loadOpenAttendance(); await loadSummary(); await loadTopSellers(); await loadSalesTrend(); await loadAttendance(); await refreshProfile(); await loadReports();
   } catch (err) { alert(err.message); }

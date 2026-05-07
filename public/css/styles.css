@@ -100,3 +100,13 @@ textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(0,64,147,.12)
 
 
 .sales-table .model-name{display:block;font-weight:700;line-height:1.2}
+
+/* Manual editable sales value field */
+.sales-table .value-input{width:100%;padding:8px 9px;border-radius:10px;text-align:right;font-weight:800;color:#0b3f94}
+.sales-table td:nth-child(3){display:table-cell!important}
+@media(max-width:640px){
+  .sales-table th:nth-child(3),.sales-table td:nth-child(3){display:table-cell!important;width:34%!important}
+  .sales-table th:nth-child(1),.sales-table td:nth-child(1){width:48%!important}
+  .sales-table th:nth-child(2),.sales-table td:nth-child(2){width:18%!important}
+  .sales-table .value-input{height:38px;min-width:82px;font-size:12px;padding:7px 6px}
+}
