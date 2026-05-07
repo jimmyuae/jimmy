@@ -15,6 +15,7 @@
   let pressStartedRecording = false;
   let suppressNextVoiceClick = false;
   let cancelCurrentRecording = false;
+  const chatEmojis = ['👍','❤️','😂','😮','😢','🙏','🔥','✅','👏','🎉'];
 
   function currentId() { return Number(currentUser()?.id || 0); }
   function verifiedBadge() { return '<span class="chat-verified" title="Verified user">✓</span>'; }
@@ -26,7 +27,9 @@
       send: '<svg class="chat-svg-icon send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11.2 20 3.8c.7-.3 1.4.4 1.1 1.1l-7.3 16.5c-.3.7-1.3.7-1.6 0l-2.4-6.2-6.2-2.4c-.8-.3-.8-1.3-.1-1.6Z" fill="currentColor"/><path d="m10 14 5-5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
       stop: '<svg class="chat-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></svg>',
       doc: '<svg class="chat-svg-icon doc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h6l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13 3v5h5M8.5 13h7M8.5 16h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-      close: '<svg class="chat-svg-icon close-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5 17.5 17.5M17.5 6.5 6.5 17.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>'
+      close: '<svg class="chat-svg-icon close-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5 17.5 17.5M17.5 6.5 6.5 17.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+      emoji: '<svg class="chat-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.5 10h.01M15.5 10h.01" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><path d="M8.5 14c1 1.6 2.1 2.4 3.5 2.4s2.5-.8 3.5-2.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+      react: '<svg class="chat-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7.5-4.7-9.2-9.2C1.6 8.5 3.8 5 7.2 5c1.9 0 3.4 1 4.3 2.3C12.4 6 13.9 5 15.8 5c3.4 0 5.6 3.5 4.4 6.8C18.5 16.3 12 21 12 21Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M19 3v4M17 5h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
     };
     return icons[name] || '';
   }
@@ -47,6 +50,8 @@
         </div>
         <div id="jimmyChatMessages" class="chat-messages"></div>
         <div id="jimmyChatReply" class="chat-reply-preview" style="display:none"><div><b id="jimmyChatReplyName"></b><span id="jimmyChatReplyBody"></span></div><button type="button" id="jimmyChatReplyClear" aria-label="Clear reply">${chatSvgIcon('close')}</button></div>
+        <div id="jimmyChatEmojiPicker" class="chat-emoji-picker" style="display:none"></div>
+        <div id="jimmyChatReactionPicker" class="chat-reaction-picker" style="display:none"></div>
         <div id="jimmyChatAttachPreview" class="chat-attach-preview" style="display:none"></div>
         <div id="jimmyChatRecordingBar" class="chat-recording-bar" style="display:none">
           <span class="record-dot"></span>
@@ -55,6 +60,7 @@
           <button type="button" id="jimmyChatCancelVoice">Cancel</button>
         </div>
         <div class="chat-compose">
+          <button id="jimmyChatEmoji" class="chat-icon-btn" type="button" aria-label="Send animated emoji">${chatSvgIcon('emoji')}</button>
           <button id="jimmyChatAttach" class="chat-icon-btn" type="button" aria-label="Attach photo, video or document">${chatSvgIcon('attach')}</button>
           <input id="jimmyChatFile" type="file" hidden accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip">
           <textarea id="jimmyChatInput" rows="1" placeholder="Message"></textarea>
@@ -68,6 +74,7 @@
     document.getElementById('jimmyChatButton').addEventListener('click', openChat);
     document.getElementById('jimmyChatClose').addEventListener('click', closeChat);
     document.getElementById('jimmyChatSend').addEventListener('click', () => sendChatMessage());
+    document.getElementById('jimmyChatEmoji').addEventListener('click', toggleSendEmojiPicker);
     document.getElementById('jimmyChatAttach').addEventListener('click', () => document.getElementById('jimmyChatFile').click());
     document.getElementById('jimmyChatFile').addEventListener('change', renderAttachPreview);
     document.getElementById('jimmyChatReplyClear').addEventListener('click', clearReply);
@@ -152,6 +159,66 @@
     document.getElementById('jimmyChatPanel').setAttribute('aria-hidden','true');
   }
 
+
+  function isEmojiOnly(text) {
+    const cleaned = String(text || '').trim();
+    return cleaned && /^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F\u200D\s]+$/u.test(cleaned) && cleaned.length <= 12;
+  }
+
+  function emojiButtons(onClickName, messageId = null) {
+    return chatEmojis.map((emoji, index) => `<button type="button" class="chat-emoji-option" style="--i:${index}" onclick="${onClickName}('${emoji}'${messageId ? `, ${messageId}` : ''})">${emoji}</button>`).join('');
+  }
+
+  function hideEmojiPickers() {
+    const sendPicker = document.getElementById('jimmyChatEmojiPicker');
+    const reactPicker = document.getElementById('jimmyChatReactionPicker');
+    if (sendPicker) sendPicker.style.display = 'none';
+    if (reactPicker) reactPicker.style.display = 'none';
+  }
+
+  function toggleSendEmojiPicker() {
+    const picker = document.getElementById('jimmyChatEmojiPicker');
+    if (!picker) return;
+    const open = picker.style.display === 'flex';
+    hideEmojiPickers();
+    if (open) return;
+    picker.innerHTML = `<div class="chat-emoji-title">Animated emoji</div><div class="chat-emoji-grid">${emojiButtons('jimmyChatSendEmoji')}</div>`;
+    picker.style.display = 'flex';
+  }
+
+  window.jimmyChatSendEmoji = async (emoji) => {
+    hideEmojiPickers();
+    await sendChatMessage(null, null, null, String(emoji || '').trim());
+  };
+
+  window.jimmyChatOpenReactionPicker = (id, ev) => {
+    ev?.stopPropagation?.();
+    const picker = document.getElementById('jimmyChatReactionPicker');
+    if (!picker) return;
+    const openFor = picker.dataset.messageId === String(id) && picker.style.display === 'flex';
+    hideEmojiPickers();
+    if (openFor) return;
+    picker.dataset.messageId = String(id);
+    picker.innerHTML = `<div class="chat-emoji-title">React to message</div><div class="chat-emoji-grid">${emojiButtons('jimmyChatReactToMessage', id)}</div><button type="button" class="chat-reaction-remove" onclick="jimmyChatReactToMessage('remove', ${id})">Remove reaction</button>`;
+    picker.style.display = 'flex';
+  };
+
+  window.jimmyChatReactToMessage = async (emoji, id) => {
+    try {
+      const data = await api(`/api/chat/messages/${id}/reactions`, { method:'POST', body: JSON.stringify({ emoji }) });
+      const msg = chatMessages.find(m => Number(m.id) === Number(id));
+      if (msg) { msg.reactions = data.reactions || []; msg.my_reaction = data.my_reaction || null; }
+      hideEmojiPickers();
+      renderMessages();
+    } catch (err) { alert(err.message); }
+  };
+
+  function reactionHtml(m) {
+    const list = m.reactions || [];
+    if (!list.length) return '';
+    return `<div class="chat-reactions">${list.map(r => `<button type="button" class="chat-reaction-pill ${m.my_reaction === r.emoji ? 'mine' : ''}" onclick="jimmyChatReactToMessage('${r.emoji}', ${m.id})"><span>${escapeHtml(r.emoji)}</span><b>${Number(r.count || 0)}</b></button>`).join('')}</div>`;
+  }
+
   function senderAvatar(m) {
     if (m.sender_profile_image) return `<img src="${escapeAttr(m.sender_profile_image)}" alt="${escapeAttr(m.sender_name)}">`;
     return `<span>${escapeHtml((m.sender_name || 'U')[0] || 'U')}</span>`;
@@ -177,15 +244,17 @@
       const deleted = Boolean(m.deleted_at);
       const reply = m.reply_to_message_id ? `<div class="chat-quoted"><b>${escapeHtml(m.reply_sender_name || 'Message')}</b><span>${escapeHtml(m.reply_body || 'Attachment')}</span></div>` : '';
       const unsend = m.can_unsend ? `<button class="chat-msg-action" onclick="jimmyChatUnsend(${m.id})">Unsend</button>` : '';
-      const content = deleted ? '<i>This message was deleted</i>' : `${reply}${messageAttachment(m)}${m.body ? `<div class="chat-text">${escapeHtml(m.body)}</div>` : ''}`;
+      const bodyHtml = m.body ? `<div class="chat-text ${isEmojiOnly(m.body) ? 'chat-emoji-message' : ''}">${escapeHtml(m.body)}</div>` : '';
+      const content = deleted ? '<i>This message was deleted</i>' : `${reply}${messageAttachment(m)}${bodyHtml}`;
       return `<div class="chat-row ${mine ? 'mine' : 'theirs'}" data-id="${m.id}">
         ${mine ? '' : `<button class="chat-avatar" onclick="jimmyChatOpenProfile(${m.sender_id})">${senderAvatar(m)}</button>`}
         <div class="chat-bubble-wrap">
           <button class="chat-sender" onclick="jimmyChatOpenProfile(${m.sender_id})">${escapeHtml(m.sender_name)} ${verifiedBadge()}</button>
           <div class="chat-bubble" ontouchstart="jimmyChatTouchStart(event, ${m.id})" ontouchend="jimmyChatTouchEnd(event, ${m.id})">
             ${content}
-            <div class="chat-meta"><button onclick="jimmyChatReply(${m.id})">Reply</button>${unsend}<span>${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span></div>
+            <div class="chat-meta"><button onclick="jimmyChatOpenReactionPicker(${m.id}, event)">${chatSvgIcon('react')} React</button><button onclick="jimmyChatReply(${m.id})">Reply</button>${unsend}<span>${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span></div>
           </div>
+          ${reactionHtml(m)}
         </div>
       </div>`;
     }).join('') || '<div class="chat-empty">No messages yet. Start the Jimmy Community conversation.</div>';
@@ -241,7 +310,7 @@
     preview.style.display = 'flex';
   }
 
-  async function sendChatMessage(extraFileData = null, extraFileName = null, extraType = null) {
+  async function sendChatMessage(extraFileData = null, extraFileName = null, extraType = null, overrideBody = null) {
     try {
       // When used as a click handler, browsers pass a MouseEvent as the first argument.
       // That must never be treated as a file, otherwise the server receives an invalid
@@ -273,7 +342,7 @@
         else messageType = 'document';
       }
 
-      const body = (input.value || '').trim();
+      const body = overrideBody !== null ? String(overrideBody || '').trim() : (input.value || '').trim();
       if (!body && !fileDataUrl) return;
       if (!fileDataUrl) { fileName = null; messageType = 'text'; }
 

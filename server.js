@@ -263,6 +263,18 @@ async function ensureSchema() {
 
     CREATE INDEX IF NOT EXISTS idx_community_messages_created_at ON community_messages(created_at);
     CREATE INDEX IF NOT EXISTS idx_community_messages_sender_id ON community_messages(sender_id);
+
+    CREATE TABLE IF NOT EXISTS community_message_reactions (
+      id SERIAL PRIMARY KEY,
+      message_id INTEGER NOT NULL REFERENCES community_messages(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      emoji TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(message_id,user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_community_message_reactions_message_id ON community_message_reactions(message_id);
+    CREATE INDEX IF NOT EXISTS idx_community_message_reactions_user_id ON community_message_reactions(user_id);
   `);
   await q(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved';
@@ -436,6 +448,12 @@ async function attachSignedUsers(rows) {
 
 async function serializeChatMessage(row) {
   if (!row) return null;
+  const reactions = await all(`SELECT emoji, COUNT(*)::int AS count
+    FROM community_message_reactions
+    WHERE message_id=$1
+    GROUP BY emoji
+    ORDER BY COUNT(*) DESC, emoji ASC`, [row.id]);
+  const myReaction = row.current_user_id ? await one('SELECT emoji FROM community_message_reactions WHERE message_id=$1 AND user_id=$2', [row.id, row.current_user_id]) : null;
   return {
     id: Number(row.id),
     sender_id: row.sender_id ? Number(row.sender_id) : null,
@@ -455,7 +473,9 @@ async function serializeChatMessage(row) {
     deleted_at: row.deleted_at || null,
     created_at: row.created_at,
     updated_at: row.updated_at,
-    can_unsend: row.sender_id && Number(row.sender_id) === Number(row.current_user_id) && !row.deleted_at && (Date.now() - new Date(row.created_at).getTime()) <= 5 * 60 * 1000
+    can_unsend: row.sender_id && Number(row.sender_id) === Number(row.current_user_id) && !row.deleted_at && (Date.now() - new Date(row.created_at).getTime()) <= 5 * 60 * 1000,
+    reactions: reactions.map(r => ({ emoji: r.emoji, count: Number(r.count || 0) })),
+    my_reaction: myReaction?.emoji || null
   };
 }
 async function cleanupExpiredChatMessages() {
@@ -927,6 +947,30 @@ app.delete('/api/chat/messages/:id/unsend', auth, async (req,res)=>{
     const ts = nowIso();
     await q('UPDATE community_messages SET body=NULL,file_path=NULL,file_name=NULL,file_mime=NULL,file_size=0,deleted_at=$1,updated_at=$2 WHERE id=$3', [ts, ts, id]);
     res.json({ok:true});
+  } catch(e) { res.status(400).json({error:e.message}); }
+});
+
+app.post('/api/chat/messages/:id/reactions', auth, async (req,res)=>{
+  try {
+    const id = Number(req.params.id);
+    const emoji = String(req.body?.emoji || '').trim();
+    const allowed = ['👍','❤️','😂','😮','😢','🙏','🔥','✅','👏','🎉'];
+    const msg = await one('SELECT id,deleted_at FROM community_messages WHERE id=$1', [id]);
+    if (!msg) return res.status(404).json({error:'Message not found.'});
+    if (msg.deleted_at) return res.status(400).json({error:'You cannot react to a deleted message.'});
+    if (!emoji || emoji === 'remove') {
+      await q('DELETE FROM community_message_reactions WHERE message_id=$1 AND user_id=$2', [id, req.user.id]);
+    } else {
+      if (!allowed.includes(emoji)) return res.status(400).json({error:'Unsupported reaction.'});
+      const ts = nowIso();
+      await q(`INSERT INTO community_message_reactions (message_id,user_id,emoji,created_at,updated_at)
+        VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (message_id,user_id)
+        DO UPDATE SET emoji=EXCLUDED.emoji,updated_at=EXCLUDED.updated_at`, [id, req.user.id, emoji, ts, ts]);
+    }
+    const reactions = await all('SELECT emoji, COUNT(*)::int AS count FROM community_message_reactions WHERE message_id=$1 GROUP BY emoji ORDER BY COUNT(*) DESC, emoji ASC', [id]);
+    const myReaction = await one('SELECT emoji FROM community_message_reactions WHERE message_id=$1 AND user_id=$2', [id, req.user.id]);
+    res.json({ok:true,reactions:reactions.map(r=>({emoji:r.emoji,count:Number(r.count||0)})),my_reaction:myReaction?.emoji||null});
   } catch(e) { res.status(400).json({error:e.message}); }
 });
 app.get('/api/chat/users/:id/monthly-report', auth, async (req,res)=>{

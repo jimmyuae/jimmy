@@ -168,3 +168,25 @@ textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(0,64,147,.12)
 .chat-attach-remove .chat-svg-icon{width:17px;height:17px}
 @media(max-width:640px){.chat-image-card,.chat-media-card,.chat-voice-card{max-width:230px}.chat-img{max-width:230px;max-height:250px}.chat-video{max-width:230px}.chat-audio{width:220px}.chat-attach-info span:last-child{max-width:190px}}
 
+
+/* Animated emoji and reactions */
+.chat-compose{position:relative}
+.chat-emoji-picker,.chat-reaction-picker{position:absolute;left:10px;right:10px;bottom:72px;z-index:12;background:rgba(255,255,255,.96);border:1px solid #dbe5f2;border-radius:18px;padding:10px;box-shadow:0 16px 45px rgba(15,23,42,.18);backdrop-filter:blur(10px);flex-direction:column;gap:8px}
+.chat-reaction-picker{left:auto;right:14px;bottom:86px;width:min(320px,calc(100% - 28px))}
+.chat-emoji-title{font-size:12px;font-weight:900;color:#475569;text-transform:uppercase;letter-spacing:.04em;padding:0 4px}
+.chat-emoji-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+.chat-emoji-option{height:42px;border:0;border-radius:14px;background:#f1f5f9;font-size:24px;display:grid;place-items:center;cursor:pointer;animation:chatEmojiFloat 1.6s ease-in-out infinite;animation-delay:calc(var(--i,0) * .05s);transition:transform .15s ease,background .15s ease}
+.chat-emoji-option:hover{background:#e0f2fe;transform:translateY(-2px) scale(1.08)}
+.chat-reaction-remove{border:0;background:#fee2e2;color:#991b1b;border-radius:12px;padding:8px 10px;font-weight:900}
+.chat-meta .chat-svg-icon{width:14px;height:14px;display:inline-block;vertical-align:-2px;margin-right:2px}
+.chat-reactions{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px;padding:0 4px}
+.chat-row.mine .chat-reactions{justify-content:flex-end}
+.chat-reaction-pill{display:inline-flex;align-items:center;gap:4px;border:1px solid #dbeafe;background:#fff;border-radius:999px;padding:3px 7px;font-size:12px;box-shadow:0 2px 8px rgba(15,23,42,.08);animation:chatReactionPop .24s ease-out}
+.chat-reaction-pill.mine{background:#e0f2fe;border-color:#93c5fd;color:#0c47a5}
+.chat-reaction-pill span{font-size:15px;line-height:1;animation:chatEmojiFloat 1.8s ease-in-out infinite}
+.chat-reaction-pill b{font-size:11px;color:#475569}
+.chat-emoji-message{font-size:34px;line-height:1.1;letter-spacing:2px;animation:chatEmojiPop 1.2s ease-in-out infinite;transform-origin:center}
+@keyframes chatEmojiFloat{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-3px) rotate(-3deg)}}
+@keyframes chatEmojiPop{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+@keyframes chatReactionPop{0%{transform:scale(.75);opacity:.2}100%{transform:scale(1);opacity:1}}
+@media(max-width:640px){.chat-emoji-picker{bottom:68px}.chat-reaction-picker{right:10px;bottom:82px}.chat-emoji-grid{grid-template-columns:repeat(5,1fr)}.chat-emoji-option{height:40px;font-size:22px}.chat-emoji-message{font-size:32px}}
