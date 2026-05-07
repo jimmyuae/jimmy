@@ -9,9 +9,27 @@
   let replyTo = null;
   let mediaRecorder = null;
   let audioChunks = [];
+  let recordingStartedAt = 0;
+  let recordingTimer = null;
+  let pressTimer = null;
+  let pressStartedRecording = false;
+  let suppressNextVoiceClick = false;
+  let cancelCurrentRecording = false;
 
   function currentId() { return Number(currentUser()?.id || 0); }
   function verifiedBadge() { return '<span class="chat-verified" title="Verified user">✓</span>'; }
+  function chatSvgIcon(name) {
+    const icons = {
+      chat: '<svg class="chat-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.75A4.75 4.75 0 0 1 9.25 1h5.5a4.75 4.75 0 0 1 4.75 4.75v4.5A4.75 4.75 0 0 1 14.75 15H10l-4.05 3.04A.9.9 0 0 1 4.5 17.32V15.1A4.75 4.75 0 0 1 1 10.5V5.75A4.75 4.75 0 0 1 5.75 1h.25" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" transform="translate(1.5 2.5)"/><path d="M8 9h8M8 12h5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
+      attach: '<svg class="chat-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.3 11.7 12.1 19.9a6 6 0 0 1-8.5-8.5l8.9-8.9a4.2 4.2 0 0 1 5.9 5.9l-8.9 8.9a2.4 2.4 0 0 1-3.4-3.4l8.1-8.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      mic: '<svg class="chat-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8.5 21h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      send: '<svg class="chat-svg-icon send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11.2 20 3.8c.7-.3 1.4.4 1.1 1.1l-7.3 16.5c-.3.7-1.3.7-1.6 0l-2.4-6.2-6.2-2.4c-.8-.3-.8-1.3-.1-1.6Z" fill="currentColor"/><path d="m10 14 5-5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
+      stop: '<svg class="chat-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></svg>',
+      doc: '<svg class="chat-svg-icon doc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h6l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13 3v5h5M8.5 13h7M8.5 16h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    };
+    return icons[name] || '';
+  }
+
   function escapeAttr(v) { return escapeHtml(v).replace(/`/g, '&#96;'); }
 
   function ensureChatDom() {
@@ -19,7 +37,7 @@
     const wrap = document.createElement('div');
     wrap.innerHTML = `
       <button id="jimmyChatButton" class="chat-float-button" type="button" aria-label="Open Jimmy Community chat">
-        <span class="chat-float-icon">💬</span><span id="jimmyChatUnread" class="chat-unread" style="display:none">0</span>
+        <span class="chat-float-icon">${chatSvgIcon('chat')}</span><span id="jimmyChatUnread" class="chat-unread" style="display:none">0</span>
       </button>
       <div id="jimmyChatPanel" class="chat-panel" aria-hidden="true">
         <div class="chat-header">
@@ -29,12 +47,18 @@
         <div id="jimmyChatMessages" class="chat-messages"></div>
         <div id="jimmyChatReply" class="chat-reply-preview" style="display:none"><div><b id="jimmyChatReplyName"></b><span id="jimmyChatReplyBody"></span></div><button type="button" id="jimmyChatReplyClear">×</button></div>
         <div id="jimmyChatAttachPreview" class="chat-attach-preview" style="display:none"></div>
+        <div id="jimmyChatRecordingBar" class="chat-recording-bar" style="display:none">
+          <span class="record-dot"></span>
+          <b id="jimmyChatRecordingTime">00:00</b>
+          <span>Recording voice note</span>
+          <button type="button" id="jimmyChatCancelVoice">Cancel</button>
+        </div>
         <div class="chat-compose">
-          <button id="jimmyChatAttach" class="chat-icon-btn" type="button" aria-label="Attach file">📎</button>
+          <button id="jimmyChatAttach" class="chat-icon-btn" type="button" aria-label="Attach photo, video or document">${chatSvgIcon('attach')}</button>
           <input id="jimmyChatFile" type="file" hidden accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip">
           <textarea id="jimmyChatInput" rows="1" placeholder="Message"></textarea>
-          <button id="jimmyChatVoice" class="chat-icon-btn" type="button" aria-label="Record voice message">🎙️</button>
-          <button id="jimmyChatSend" class="chat-send" type="button">➤</button>
+          <button id="jimmyChatVoice" class="chat-icon-btn" type="button" aria-label="Record voice message" title="Tap to start/stop, or hold and release to send">${chatSvgIcon('mic')}</button>
+          <button id="jimmyChatSend" class="chat-send" type="button" aria-label="Send message">${chatSvgIcon('send')}</button>
         </div>
       </div>
       <div id="jimmyChatProfileModal" class="chat-profile-modal" style="display:none"></div>
@@ -46,7 +70,8 @@
     document.getElementById('jimmyChatAttach').addEventListener('click', () => document.getElementById('jimmyChatFile').click());
     document.getElementById('jimmyChatFile').addEventListener('change', renderAttachPreview);
     document.getElementById('jimmyChatReplyClear').addEventListener('click', clearReply);
-    document.getElementById('jimmyChatVoice').addEventListener('click', toggleVoiceRecording);
+    document.getElementById('jimmyChatCancelVoice').addEventListener('click', cancelVoiceRecording);
+    setupVoiceButtonEvents();
     document.getElementById('jimmyChatInput').addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
     });
@@ -135,7 +160,7 @@
     if (m.message_type === 'image') return `<a href="${escapeAttr(m.file_url)}" target="_blank"><img class="chat-img" src="${escapeAttr(m.file_url)}" alt="${escapeAttr(m.file_name || 'Image')}"></a>`;
     if (m.message_type === 'video') return `<video class="chat-video" src="${escapeAttr(m.file_url)}" controls></video>`;
     if (m.message_type === 'audio') return `<audio class="chat-audio" src="${escapeAttr(m.file_url)}" controls></audio>`;
-    return `<a class="chat-doc" href="${escapeAttr(m.file_url)}" target="_blank">📄 ${escapeHtml(m.file_name || 'Document')}</a>`;
+    return `<a class="chat-doc" href="${escapeAttr(m.file_url)}" target="_blank">${chatSvgIcon('doc')} <span>${escapeHtml(m.file_name || 'Document')}</span></a>`;
   }
   function renderMessages() {
     const box = document.getElementById('jimmyChatMessages');
@@ -200,39 +225,132 @@
     try {
       const input = document.getElementById('jimmyChatInput');
       const fileInput = document.getElementById('jimmyChatFile');
-      let fileDataUrl = extraFileData;
-      let fileName = extraFileName;
+      const selectedFile = fileInput?.files?.[0] || null;
+      let fileDataUrl = extraFileData || null;
+      let fileName = extraFileName || null;
       let messageType = extraType || 'text';
-      if (!fileDataUrl && fileInput.files[0]) {
-        fileName = fileInput.files[0].name;
-        fileDataUrl = await fileToDataUrl(fileInput.files[0]);
+
+      if (!fileDataUrl && selectedFile) {
+        if (selectedFile.size > 25 * 1024 * 1024) {
+          alert('Maximum file size is 25 MB.');
+          fileInput.value = '';
+          document.getElementById('jimmyChatAttachPreview').style.display = 'none';
+          return;
+        }
+        fileName = selectedFile.name;
+        fileDataUrl = await fileToDataUrl(selectedFile);
+        if (selectedFile.type.startsWith('image/')) messageType = 'image';
+        else if (selectedFile.type.startsWith('video/')) messageType = 'video';
+        else if (selectedFile.type.startsWith('audio/')) messageType = 'audio';
+        else messageType = 'document';
       }
-      const body = input.value.trim();
+
+      const body = (input.value || '').trim();
       if (!body && !fileDataUrl) return;
+      if (!fileDataUrl) { fileName = null; messageType = 'text'; }
+
       const data = await api('/api/chat/messages', { method:'POST', body: JSON.stringify({ body, file_data_url: fileDataUrl, file_name: fileName, message_type: messageType, reply_to_message_id: replyTo?.id || null }) });
-      input.value = ''; fileInput.value = ''; document.getElementById('jimmyChatAttachPreview').style.display = 'none'; clearReply();
+      input.value = '';
+      if (fileInput) fileInput.value = '';
+      document.getElementById('jimmyChatAttachPreview').style.display = 'none';
+      clearReply();
       chatMessages.push(data.message); lastMessageId = Math.max(lastMessageId, Number(data.message.id));
       localStorage.setItem('jimmyChatLastMessageId', String(lastMessageId));
       renderMessages();
     } catch (err) { alert(err.message); }
   }
 
-  async function toggleVoiceRecording() {
+  function updateRecordingTimer() {
+    const elapsed = Math.max(0, Math.floor((Date.now() - recordingStartedAt) / 1000));
+    const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const ss = String(elapsed % 60).padStart(2, '0');
+    const label = document.getElementById('jimmyChatRecordingTime');
+    if (label) label.textContent = `${mm}:${ss}`;
+  }
+
+  function showRecordingBar(show) {
+    const bar = document.getElementById('jimmyChatRecordingBar');
+    if (bar) bar.style.display = show ? 'flex' : 'none';
+  }
+
+  async function startVoiceRecording() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') return;
     const btn = document.getElementById('jimmyChatVoice');
-    if (mediaRecorder && mediaRecorder.state === 'recording') { mediaRecorder.stop(); btn.classList.remove('recording'); btn.textContent = '🎙️'; return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunks = [];
+      cancelCurrentRecording = false;
       mediaRecorder = new MediaRecorder(stream);
+      recordingStartedAt = Date.now();
+      updateRecordingTimer();
+      clearInterval(recordingTimer);
+      recordingTimer = setInterval(updateRecordingTimer, 500);
       mediaRecorder.ondataavailable = e => { if (e.data.size) audioChunks.push(e.data); };
       mediaRecorder.onstop = async () => {
+        clearInterval(recordingTimer);
+        recordingTimer = null;
         stream.getTracks().forEach(t => t.stop());
+        btn.classList.remove('recording');
+        btn.innerHTML = chatSvgIcon('mic');
+        showRecordingBar(false);
+        if (cancelCurrentRecording) { audioChunks = []; return; }
         const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        audioChunks = [];
+        if (!blob.size) return;
         const dataUrl = await new Promise(resolve => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsDataURL(blob); });
         await sendChatMessage(dataUrl, `voice-${Date.now()}.webm`, 'audio');
       };
-      mediaRecorder.start(); btn.classList.add('recording'); btn.textContent = '⏹️';
+      mediaRecorder.start();
+      btn.classList.add('recording');
+      btn.innerHTML = chatSvgIcon('stop');
+      showRecordingBar(true);
     } catch (err) { alert('Microphone permission failed: ' + err.message); }
+  }
+
+  function stopVoiceRecording(send = true) {
+    if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+    cancelCurrentRecording = !send;
+    mediaRecorder.stop();
+  }
+
+  async function toggleVoiceRecording() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') return stopVoiceRecording(true);
+    await startVoiceRecording();
+  }
+
+  function cancelVoiceRecording() { stopVoiceRecording(false); }
+
+  function setupVoiceButtonEvents() {
+    const btn = document.getElementById('jimmyChatVoice');
+    if (!btn || btn.dataset.ready === 'yes') return;
+    btn.dataset.ready = 'yes';
+    const beginHold = (e) => {
+      if (e.type === 'touchstart') e.preventDefault();
+      pressStartedRecording = false;
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(async () => {
+        pressStartedRecording = true;
+        suppressNextVoiceClick = true;
+        await startVoiceRecording();
+      }, 260);
+    };
+    const endHold = (e) => {
+      if (e.type === 'touchend') e.preventDefault();
+      clearTimeout(pressTimer);
+      if (pressStartedRecording) {
+        stopVoiceRecording(true);
+        pressStartedRecording = false;
+      }
+    };
+    btn.addEventListener('mousedown', beginHold);
+    btn.addEventListener('touchstart', beginHold, { passive:false });
+    btn.addEventListener('mouseup', endHold);
+    btn.addEventListener('mouseleave', () => { if (pressStartedRecording) stopVoiceRecording(false); });
+    btn.addEventListener('touchend', endHold, { passive:false });
+    btn.addEventListener('click', async (e) => {
+      if (suppressNextVoiceClick) { suppressNextVoiceClick = false; return; }
+      await toggleVoiceRecording();
+    });
   }
 
   window.jimmyChatOpenProfile = async (userId) => {
