@@ -164,9 +164,9 @@
     if (!m.file_url) return '';
     const url = escapeAttr(m.file_url);
     const name = m.file_name || 'Attachment';
-    if (m.message_type === 'image') return `<div class="chat-image-card"><a href="${url}" target="_blank"><img class="chat-img" src="${url}" alt="${escapeAttr(name)}"></a><div class="chat-file-actions">${attachmentDownload(m.file_url, name, 'Download image')}</div></div>`;
+    if (m.message_type === 'image') return `<div class="chat-image-card"><a class="chat-image-download-inside" href="${url}" target="_blank" download="${escapeAttr(name)}">Download image</a><a href="${url}" target="_blank"><img class="chat-img" src="${url}" alt="${escapeAttr(name)}"></a></div>`;
     if (m.message_type === 'video') return `<div class="chat-media-card"><video class="chat-video" src="${url}" controls playsinline></video><div class="chat-file-actions">${attachmentDownload(m.file_url, name, 'Download video')}</div></div>`;
-    if (m.message_type === 'audio') return `<div class="chat-voice-card"><audio class="chat-audio" src="${url}" controls preload="metadata"></audio><div class="chat-file-actions">${attachmentDownload(m.file_url, name, 'Download voice')}</div></div>`;
+    if (m.message_type === 'audio') return `<div class="chat-voice-card"><audio class="chat-audio" src="${url}" controls preload="metadata"></audio></div>`;
     return `<a class="chat-doc" href="${url}" target="_blank" download="${escapeAttr(name)}">${chatSvgIcon('doc')} <span>${escapeHtml(name)}</span></a>`;
   }
   function renderMessages() {
