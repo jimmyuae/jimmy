@@ -885,8 +885,10 @@ app.post('/api/chat/messages', auth, async (req,res)=>{
     const replyToId = req.body?.reply_to_message_id ? Number(req.body.reply_to_message_id) : null;
     let type = ['text','image','video','document','audio'].includes(req.body?.message_type) ? req.body.message_type : 'text';
     let fileInfo = null;
-    if (req.body?.file_data_url) {
-      fileInfo = await saveDataUrlFile(req.body.file_data_url, `message-user-${req.user.id}`, req.body.file_name || 'attachment');
+    const incomingFileDataUrl = typeof req.body?.file_data_url === 'string' ? req.body.file_data_url.trim() : '';
+    const hasValidFilePayload = incomingFileDataUrl.startsWith('data:');
+    if (hasValidFilePayload) {
+      fileInfo = await saveDataUrlFile(incomingFileDataUrl, `message-user-${req.user.id}`, req.body.file_name || 'attachment');
       if (fileInfo.mime.startsWith('image/')) type = 'image';
       else if (fileInfo.mime.startsWith('video/')) type = 'video';
       else if (fileInfo.mime.startsWith('audio/')) type = 'audio';

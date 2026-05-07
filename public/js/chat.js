@@ -156,12 +156,18 @@
     if (m.sender_profile_image) return `<img src="${escapeAttr(m.sender_profile_image)}" alt="${escapeAttr(m.sender_name)}">`;
     return `<span>${escapeHtml((m.sender_name || 'U')[0] || 'U')}</span>`;
   }
+  function attachmentDownload(url, fileName, label = 'Download') {
+    return `<a class="chat-download-link" href="${escapeAttr(url)}" target="_blank" download="${escapeAttr(fileName || 'attachment')}">${escapeHtml(label)}</a>`;
+  }
+
   function messageAttachment(m) {
     if (!m.file_url) return '';
-    if (m.message_type === 'image') return `<a href="${escapeAttr(m.file_url)}" target="_blank"><img class="chat-img" src="${escapeAttr(m.file_url)}" alt="${escapeAttr(m.file_name || 'Image')}"></a>`;
-    if (m.message_type === 'video') return `<video class="chat-video" src="${escapeAttr(m.file_url)}" controls></video>`;
-    if (m.message_type === 'audio') return `<audio class="chat-audio" src="${escapeAttr(m.file_url)}" controls></audio>`;
-    return `<a class="chat-doc" href="${escapeAttr(m.file_url)}" target="_blank">${chatSvgIcon('doc')} <span>${escapeHtml(m.file_name || 'Document')}</span></a>`;
+    const url = escapeAttr(m.file_url);
+    const name = m.file_name || 'Attachment';
+    if (m.message_type === 'image') return `<div class="chat-image-card"><a href="${url}" target="_blank"><img class="chat-img" src="${url}" alt="${escapeAttr(name)}"></a><div class="chat-file-actions">${attachmentDownload(m.file_url, name, 'Download image')}</div></div>`;
+    if (m.message_type === 'video') return `<div class="chat-media-card"><video class="chat-video" src="${url}" controls playsinline></video><div class="chat-file-actions">${attachmentDownload(m.file_url, name, 'Download video')}</div></div>`;
+    if (m.message_type === 'audio') return `<div class="chat-voice-card"><audio class="chat-audio" src="${url}" controls preload="metadata"></audio><div class="chat-file-actions">${attachmentDownload(m.file_url, name, 'Download voice')}</div></div>`;
+    return `<a class="chat-doc" href="${url}" target="_blank" download="${escapeAttr(name)}">${chatSvgIcon('doc')} <span>${escapeHtml(name)}</span></a>`;
   }
   function renderMessages() {
     const box = document.getElementById('jimmyChatMessages');
@@ -214,12 +220,25 @@
   };
 
   async function renderAttachPreview() {
-    const file = document.getElementById('jimmyChatFile').files[0];
+    const fileInput = document.getElementById('jimmyChatFile');
+    const file = fileInput.files[0];
     const preview = document.getElementById('jimmyChatAttachPreview');
-    if (!file) { preview.style.display = 'none'; return; }
-    if (file.size > 25 * 1024 * 1024) { alert('Maximum file size is 25 MB.'); document.getElementById('jimmyChatFile').value = ''; return; }
-    preview.textContent = `Attached: ${file.name}`;
-    preview.style.display = 'block';
+    if (!file) { preview.style.display = 'none'; preview.innerHTML = ''; return; }
+    if (file.size > 25 * 1024 * 1024) { alert('Maximum file size is 25 MB.'); fileInput.value = ''; preview.style.display = 'none'; preview.innerHTML = ''; return; }
+    let thumb = '';
+    if (file.type.startsWith('image/')) {
+      const url = URL.createObjectURL(file);
+      thumb = `<img class="chat-attach-thumb" src="${url}" alt="Preview" onload="URL.revokeObjectURL(this.src)">`;
+    } else if (file.type.startsWith('video/')) {
+      thumb = `<span class="chat-attach-kind">Video</span>`;
+    } else if (file.type.startsWith('audio/')) {
+      thumb = `<span class="chat-attach-kind">Audio</span>`;
+    } else {
+      thumb = `<span class="chat-attach-kind">File</span>`;
+    }
+    preview.innerHTML = `<div class="chat-attach-info">${thumb}<span>${escapeHtml(file.name)}</span></div><button type="button" class="chat-attach-remove" id="jimmyChatRemoveAttach">${chatSvgIcon('close')}</button>`;
+    document.getElementById('jimmyChatRemoveAttach')?.addEventListener('click', () => { fileInput.value = ''; preview.innerHTML = ''; preview.style.display = 'none'; });
+    preview.style.display = 'flex';
   }
 
   async function sendChatMessage(extraFileData = null, extraFileName = null, extraType = null) {
@@ -243,7 +262,7 @@
         if (selectedFile.size > 25 * 1024 * 1024) {
           alert('Maximum file size is 25 MB.');
           fileInput.value = '';
-          document.getElementById('jimmyChatAttachPreview').style.display = 'none';
+          { const p = document.getElementById('jimmyChatAttachPreview'); if (p) { p.style.display = 'none'; p.innerHTML = ''; } }
           return;
         }
         fileName = selectedFile.name;
@@ -261,7 +280,7 @@
       const data = await api('/api/chat/messages', { method:'POST', body: JSON.stringify({ body, file_data_url: fileDataUrl, file_name: fileName, message_type: messageType, reply_to_message_id: replyTo?.id || null }) });
       input.value = '';
       if (fileInput) fileInput.value = '';
-      document.getElementById('jimmyChatAttachPreview').style.display = 'none';
+      { const p = document.getElementById('jimmyChatAttachPreview'); if (p) { p.style.display = 'none'; p.innerHTML = ''; } }
       clearReply();
       chatMessages.push(data.message); lastMessageId = Math.max(lastMessageId, Number(data.message.id));
       localStorage.setItem('jimmyChatLastMessageId', String(lastMessageId));
