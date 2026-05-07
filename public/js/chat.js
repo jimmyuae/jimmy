@@ -16,6 +16,31 @@
   let suppressNextVoiceClick = false;
   let cancelCurrentRecording = false;
   const chatEmojis = ['👍','❤️','😂','😮','😢','🙏','🔥','✅','👏','🎉'];
+  const animatedEmojiSvgs = {
+    '👍': `<svg class="chat-emoji-svg emoji-like" viewBox="0 0 64 64" aria-hidden="true"><rect x="7" y="27" width="14" height="26" rx="6" fill="#dfe7f5"/><path d="M23 28c0-3.3 2.7-6 6-6h6c1.7 0 3-1.3 3-3v-5c0-4.7 3-8 7-8h2v20h7c3.9 0 7 3.1 7 7 0 1.3-.4 2.6-1 3.7l-4.7 8.2c-1.6 2.8-4.6 4.6-7.9 4.6H23V28z" fill="#ffc83d"/><path class="ae-like-thumb" d="M40 25V11c0-3.2 1.9-5.3 5-5.9h2v20z" fill="#ffb22e"/><path d="M31 28v18M38 28v18M45 28v18" stroke="#de9810" stroke-width="2" stroke-linecap="round" opacity=".45"/></svg>`,
+    '❤️': `<svg class="chat-emoji-svg emoji-heart" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="heartGrad" x1="0" x2="1"><stop offset="0" stop-color="#ff6a85"/><stop offset="1" stop-color="#ff2157"/></linearGradient></defs><path class="ae-heart-main" d="M32 56 12.5 36.5C4.7 28.7 4.7 16 12.5 8.8c6.6-6.2 17-5.8 23.3.8l.2.2.2-.2C42.5 3 52.9 2.6 59.5 8.8c7.8 7.2 7.8 19.9 0 27.7Z" fill="url(#heartGrad)"/><path d="M47 14c3 2 5 5.4 5.3 9.2" fill="none" stroke="#ffd1dc" stroke-width="3" stroke-linecap="round" opacity=".8"/></svg>`,
+    '😂': `<svg class="chat-emoji-svg emoji-laugh" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="24" fill="#ffd54f"/><path d="M22 24c2.6-4 5.7-6 10-6s7.4 2 10 6" fill="none" stroke="#4b2a12" stroke-width="3" stroke-linecap="round" opacity=".22"/><path d="M21 28c2.6-2.2 4.9-3.3 7.1-3.3 2 0 3.7 1 4.9 3" fill="none" stroke="#432818" stroke-width="3" stroke-linecap="round"/><path d="M36 28c2.6-2.2 4.9-3.3 7.1-3.3 2 0 3.7 1 4.9 3" fill="none" stroke="#432818" stroke-width="3" stroke-linecap="round"/><path d="M20 36c3.8 6.8 8.7 10.2 12 10.2S40.2 42.8 44 36" fill="#5b1e10"/><path d="M20 36c3.8 6.8 8.7 10.2 12 10.2S40.2 42.8 44 36" fill="none" stroke="#5b1e10" stroke-width="2.5" stroke-linecap="round"/><circle cx="24" cy="31" r="2.2" fill="#69b9ff" class="ae-tear ae-tear-left"/><circle cx="40" cy="31" r="2.2" fill="#69b9ff" class="ae-tear ae-tear-right"/></svg>`,
+    '😮': `<svg class="chat-emoji-svg emoji-wow" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="24" fill="#ffd54f"/><circle cx="24" cy="24" r="3.1" fill="#45220a"/><circle cx="40" cy="24" r="3.1" fill="#45220a"/><path d="M19 18c1.4-2.4 3.5-3.6 6.3-3.6M38.7 14.4c2.8 0 4.9 1.2 6.3 3.6" fill="none" stroke="#6f4520" stroke-width="2.4" stroke-linecap="round" opacity=".55"/><ellipse class="ae-wow-mouth" cx="32" cy="39" rx="7" ry="8.2" fill="#643a15"/><ellipse cx="32" cy="39" rx="3.6" ry="4.5" fill="#2d1606" opacity=".32"/></svg>`,
+    '😢': `<svg class="chat-emoji-svg emoji-cry" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="24" fill="#ffd54f"/><circle cx="24" cy="25" r="2.8" fill="#45220a"/><circle cx="40" cy="25" r="2.8" fill="#45220a"/><path d="M22 43c2.5-2.8 5.8-4.2 10-4.2S39.5 40.2 42 43" fill="none" stroke="#5d3410" stroke-width="3.2" stroke-linecap="round"/><path d="M17.5 18.8c1.6-1.7 3.8-2.6 6.5-2.6M40 16.2c2.7 0 4.9.9 6.5 2.6" fill="none" stroke="#8a5a23" stroke-width="2.4" stroke-linecap="round" opacity=".55"/><path class="ae-cry-drop drop-1" d="M20 31c2.4 3.5 3.6 6.4 3.6 8.4 0 2.6-1.8 4.2-4.2 4.2S15.2 42 15.2 39.4c0-2 1.4-4.9 4.8-8.4Z" fill="#4da9ff"/><path class="ae-cry-drop drop-2" d="M44 31c2.4 3.5 3.6 6.4 3.6 8.4 0 2.6-1.8 4.2-4.2 4.2s-4.2-1.6-4.2-4.2c0-2 1.4-4.9 4.8-8.4Z" fill="#4da9ff"/></svg>`,
+    '🙏': `<svg class="chat-emoji-svg emoji-pray" viewBox="0 0 64 64" aria-hidden="true"><path class="ae-pray-left" d="M28 17c-2.8 0-5 2.2-5 5v11l-6.6 10.8c-1.3 2.2-.6 5 1.6 6.3 2.2 1.3 5 .6 6.3-1.6L32 35l7.7 13.5c1.3 2.2 4.1 2.9 6.3 1.6 2.2-1.3 2.9-4.1 1.6-6.3L41 33V22c0-2.8-2.2-5-5-5h-8Z" fill="#ffd36d"/><path class="ae-pray-right" d="M31 10c-2.2 0-4 1.8-4 4v22h10V14c0-2.2-1.8-4-4-4h-2Z" fill="#ffb95a"/><path class="ae-pray-glow" d="M32 4v6M20 9l3.8 4M44 9l-3.8 4" fill="none" stroke="#86b7ff" stroke-width="3" stroke-linecap="round" opacity=".8"/></svg>`,
+    '🔥': `<svg class="chat-emoji-svg emoji-fire" viewBox="0 0 64 64" aria-hidden="true"><path d="M35 6c3.8 6.1 4.2 11.8 1.2 17.2 4.4-1.2 7.4-4.1 9-8.8 6.9 7 10.4 14.1 10.4 21.4C55.6 47.4 46.2 56 32 56S8.4 47.4 8.4 35.8c0-8.7 4.7-16.5 14.2-23.4-.7 7 1 12.4 5 16.2 1.7-7.7 4.2-15.3 7.4-22.6Z" fill="#ff8c22"/><path class="ae-fire-core" d="M33 18c2.7 4.4 3 8.6.8 12.6 3.2-.9 5.4-3 6.5-6.4 5 5.1 7.6 10.3 7.6 15.7 0 8.5-6.9 13.9-15.9 13.9S16 48.3 16 39.8c0-6.4 3.4-12.1 10.3-17.1-.5 5.1.7 9.1 3.6 11.9 1.2-5.7 3-11.2 5.1-16.6Z" fill="#ffd34d"/></svg>`,
+    '✅': `<svg class="chat-emoji-svg emoji-check" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="22" fill="#39c46a"/><circle class="ae-check-ring" cx="32" cy="32" r="28" fill="none" stroke="#39c46a" stroke-width="4" opacity=".35"/><path d="M21 32.5 28.8 40 43 25.8" fill="none" stroke="#fff" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    '👏': `<svg class="chat-emoji-svg emoji-clap" viewBox="0 0 64 64" aria-hidden="true"><path class="ae-clap-left" d="M21 22c-2.8 0-5 2.2-5 5v10c0 4.5 3.6 8.1 8.1 8.1H30V27c0-2.8-2.2-5-5-5Z" fill="#ffd36d"/><path class="ae-clap-right" d="M43 19c2.8 0 5 2.2 5 5v13.5c0 4.7-3.8 8.5-8.5 8.5H32V24c0-2.8 2.2-5 5-5Z" fill="#ffbf52"/><path d="M16 17v-6M12 20H7M49 15l4-5M52 21h6" fill="none" stroke="#4da9ff" stroke-width="3" stroke-linecap="round" class="ae-clap-lines"/></svg>`,
+    '🎉': `<svg class="chat-emoji-svg emoji-party" viewBox="0 0 64 64" aria-hidden="true"><path d="M17 19 46 32 24 54 17 19Z" fill="#6c63ff"/><path d="M17 19 35 42" fill="none" stroke="#fff" stroke-width="3" opacity=".9"/><path d="M17 19 42 11" fill="none" stroke="#a78bfa" stroke-width="4" stroke-linecap="round"/><circle class="ae-confetti c1" cx="46" cy="15" r="3" fill="#ff5b99"/><circle class="ae-confetti c2" cx="54" cy="24" r="2.6" fill="#4da9ff"/><circle class="ae-confetti c3" cx="48" cy="28" r="2.6" fill="#ffcc3d"/><path class="ae-confetti-line l1" d="M38 8c2 3.5 5.1 5.6 9.3 6.2" fill="none" stroke="#ff9f43" stroke-width="2.8" stroke-linecap="round"/><path class="ae-confetti-line l2" d="M44 6c-.4 3 0 5.8 1.3 8.2" fill="none" stroke="#34d399" stroke-width="2.8" stroke-linecap="round"/></svg>`
+  };
+
+  function emojiVisual(emoji, sizeClass = 'md') {
+    const svg = animatedEmojiSvgs[String(emoji || '').trim()];
+    if (!svg) return `<span class="chat-emoji-fallback">${escapeHtml(String(emoji || ''))}</span>`;
+    return `<span class="chat-emoji-visual ${sizeClass}" data-emoji="${escapeAttr(emoji)}">${svg}</span>`;
+  }
+
+  function emojiOnlyHtml(text) {
+    const trimmed = String(text || '').trim();
+    return animatedEmojiSvgs[trimmed]
+      ? `<div class="chat-text chat-emoji-message">${emojiVisual(trimmed, 'lg')}</div>`
+      : `<div class="chat-text chat-emoji-message">${escapeHtml(trimmed)}</div>`;
+  }
 
   function currentId() { return Number(currentUser()?.id || 0); }
   function verifiedBadge() { return '<span class="chat-verified" title="Verified user">✓</span>'; }
@@ -166,7 +191,7 @@
   }
 
   function emojiButtons(onClickName, messageId = null) {
-    return chatEmojis.map((emoji, index) => `<button type="button" class="chat-emoji-option" style="--i:${index}" onclick="${onClickName}('${emoji}'${messageId ? `, ${messageId}` : ''})">${emoji}</button>`).join('');
+    return chatEmojis.map((emoji, index) => `<button type="button" class="chat-emoji-option" style="--i:${index}" onclick="${onClickName}('${emoji}'${messageId ? `, ${messageId}` : ''})">${emojiVisual(emoji, 'sm')}</button>`).join('');
   }
 
   function hideEmojiPickers() {
@@ -182,7 +207,7 @@
     const open = picker.style.display === 'flex';
     hideEmojiPickers();
     if (open) return;
-    picker.innerHTML = `<div class="chat-emoji-title">Animated emoji</div><div class="chat-emoji-grid">${emojiButtons('jimmyChatSendEmoji')}</div>`;
+    picker.innerHTML = `<div class="chat-emoji-title">Live emoji</div><div class="chat-emoji-grid">${emojiButtons('jimmyChatSendEmoji')}</div>`;
     picker.style.display = 'flex';
   }
 
@@ -216,7 +241,7 @@
   function reactionHtml(m) {
     const list = m.reactions || [];
     if (!list.length) return '';
-    return `<div class="chat-reactions">${list.map(r => `<button type="button" class="chat-reaction-pill ${m.my_reaction === r.emoji ? 'mine' : ''}" onclick="jimmyChatReactToMessage('${r.emoji}', ${m.id})"><span>${escapeHtml(r.emoji)}</span><b>${Number(r.count || 0)}</b></button>`).join('')}</div>`;
+    return `<div class="chat-reactions">${list.map(r => `<button type="button" class="chat-reaction-pill ${m.my_reaction === r.emoji ? 'mine' : ''}" onclick="jimmyChatReactToMessage('${r.emoji}', ${m.id})"><span>${emojiVisual(r.emoji, 'xs')}</span><b>${Number(r.count || 0)}</b></button>`).join('')}</div>`;
   }
 
   function senderAvatar(m) {
@@ -244,7 +269,7 @@
       const deleted = Boolean(m.deleted_at);
       const reply = m.reply_to_message_id ? `<div class="chat-quoted"><b>${escapeHtml(m.reply_sender_name || 'Message')}</b><span>${escapeHtml(m.reply_body || 'Attachment')}</span></div>` : '';
       const unsend = m.can_unsend ? `<button class="chat-msg-action" onclick="jimmyChatUnsend(${m.id})">Unsend</button>` : '';
-      const bodyHtml = m.body ? `<div class="chat-text ${isEmojiOnly(m.body) ? 'chat-emoji-message' : ''}">${escapeHtml(m.body)}</div>` : '';
+      const bodyHtml = m.body ? (isEmojiOnly(m.body) ? emojiOnlyHtml(m.body) : `<div class="chat-text">${escapeHtml(m.body)}</div>`) : '';
       const content = deleted ? '<i>This message was deleted</i>' : `${reply}${messageAttachment(m)}${bodyHtml}`;
       return `<div class="chat-row ${mine ? 'mine' : 'theirs'}" data-id="${m.id}">
         ${mine ? '' : `<button class="chat-avatar" onclick="jimmyChatOpenProfile(${m.sender_id})">${senderAvatar(m)}</button>`}
