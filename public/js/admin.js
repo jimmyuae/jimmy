@@ -168,6 +168,12 @@ async function loadStores() {
 
   const groupOptions = `<option value="">All location groups</option>${groups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('')}`;
   const storeOptions = `<option value="">All stores</option>${groupedOpts}`;
+  const mallSuggestionValues = [...new Set(['OASIS MALL', 'Dubai Mall', 'City Centre Deira', 'Mall of the Emirates', ...groups])];
+  const storeSuggestionValues = [...new Set(['Emax', 'Sharaf DG', 'Carrefour', ...activeStores.map(s => s.name).filter(Boolean)])];
+  const mallSuggestions = document.getElementById('mallSuggestions');
+  const storeNameSuggestions = document.getElementById('storeNameSuggestions');
+  if (mallSuggestions) mallSuggestions.innerHTML = mallSuggestionValues.map(v => `<option value="${escapeHtml(v)}"></option>`).join('');
+  if (storeNameSuggestions) storeNameSuggestions.innerHTML = storeSuggestionValues.map(v => `<option value="${escapeHtml(v)}"></option>`).join('');
   if (userGroupFilter) userGroupFilter.innerHTML = groupOptions;
   if (attendanceGroupFilter) attendanceGroupFilter.innerHTML = groupOptions;
   if (userStoreFilter) userStoreFilter.innerHTML = storeOptions;
@@ -209,7 +215,7 @@ async function loadProducts() {
       <td><input style="width:110px" type="number" step="0.01" value="${Number(p.default_price || 0)}" onchange="updateProduct(${p.id}, {default_price: this.value})"></td>
       <td><input style="width:80px" type="number" value="${Number(p.display_order || 0)}" onchange="updateProduct(${p.id}, {display_order: this.value})"></td>
       <td><span class="badge ${p.active ? 'ok' : 'bad'}">${p.active ? 'Active' : 'Inactive'}</span></td>
-      <td>${p.active ? `<button class="small danger" onclick="disableProduct(${p.id})">Disable</button>` : ''}</td>
+      <td><button class="small danger" onclick="deleteProduct(${p.id})">Delete</button></td>
     </tr>
   `).join('') || '<tr><td colspan="6">No products.</td></tr>';
 }
@@ -323,7 +329,7 @@ storeForm.addEventListener('submit', async e => {
     const payload = formToObject(storeForm);
     await api('/api/admin/stores', { method: 'POST', body: JSON.stringify(payload) });
     storeForm.reset();
-    storeForm.store_group.value = 'General';
+    storeForm.store_group.value = '';
     storeForm.radius_m.value = 500;
     storeForm.opening_time.value = '10:00';
     storeForm.closing_time.value = '22:00';
@@ -349,10 +355,20 @@ async function updateProduct(id, patch) {
     await loadProducts();
   } catch (err) { alert(err.message); }
 }
-async function disableProduct(id) {
-  if (!confirm('Disable this product from the active logout sales list? Old reports will stay unchanged.')) return;
+async function deleteProduct(id) {
+  const row = [...document.querySelectorAll('#productsRows tr')].find(tr => tr.querySelector(`button[onclick="deleteProduct(${id})"]`));
+  const productName = row ? row.children[0]?.textContent?.trim() : 'this product';
+  const typed = prompt(`This will permanently delete ${productName} from the server and dashboard. Existing sales report history will keep the saved product name/value snapshot.
+
+To continue, please write exactly: Confirm`);
+  if (typed === null) return;
+  if (String(typed || '').trim().toLowerCase() !== 'confirm') {
+    alert('Deletion not confirmed. Please type Confirm to continue.');
+    return;
+  }
   try {
-    await api(`/api/admin/products/${id}`, { method: 'DELETE' });
+    const result = await api(`/api/admin/products/${id}`, { method: 'DELETE' });
+    alert(result.message || 'Product permanently deleted.');
     await loadProducts();
   } catch (err) { alert(err.message); }
 }

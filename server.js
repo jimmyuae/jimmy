@@ -877,7 +877,22 @@ app.delete('/api/admin/stores/:id', auth, requireAdmin, async (req,res)=>{
 app.get('/api/admin/products', auth, requireAdmin, async (req,res)=>{ res.json({products:await all('SELECT * FROM products ORDER BY active DESC, display_order ASC, model ASC')}); });
 app.post('/api/admin/products', auth, requireAdmin, async (req,res)=>{ const {model,name,category,default_price,display_order}=req.body||{}; if(!model) return res.status(400).json({error:'Product model is required.'}); const ts=nowIso(); const row=await one('INSERT INTO products (model,name,category,default_price,active,display_order,created_at,updated_at) VALUES ($1,$2,$3,$4,1,$5,$6,$7) RETURNING id',[model,name||model,category||'',Number(default_price||0),Number(display_order||0),ts,ts]); res.json({ok:true,id:row.id}); });
 app.patch('/api/admin/products/:id', auth, requireAdmin, async (req,res)=>{ const fields=[],params=[]; let i=1; for(const key of ['model','name','category','default_price','display_order','active']) if(req.body[key]!==undefined){fields.push(`${key}=$${i++}`);params.push(req.body[key]);} if(!fields.length) return res.json({ok:true}); fields.push(`updated_at=$${i++}`); params.push(nowIso(),req.params.id); await q(`UPDATE products SET ${fields.join(', ')} WHERE id=$${i}`,params); res.json({ok:true}); });
-app.delete('/api/admin/products/:id', auth, requireAdmin, async (req,res)=>{ await q('UPDATE products SET active=0,updated_at=$1 WHERE id=$2',[nowIso(),req.params.id]); res.json({ok:true,message:'Product disabled. Old report history is preserved.'}); });
+app.delete('/api/admin/products/:id', auth, requireAdmin, async (req,res)=>{
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('UPDATE daily_sales_report_items SET product_id=NULL, updated_at=$1 WHERE product_id=$2', [nowIso(), req.params.id]);
+    const result = await client.query('DELETE FROM products WHERE id=$1', [req.params.id]);
+    await client.query('COMMIT');
+    if (!result.rowCount) return res.status(404).json({error:'Product not found.'});
+    res.json({ok:true,message:'Product permanently deleted from the server and dashboard. Old report snapshots are preserved.'});
+  } catch(e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    res.status(400).json({error:e.message});
+  } finally {
+    client.release();
+  }
+});
 app.get('/api/admin/attendance', auth, requireAdmin, async (req,res)=>{ const rows=await all(`SELECT a.*,u.name AS worker_name,u.employee_code,s.name AS store_name,s.store_group,ds.total_customers,ds.converted_customers,ds.total_qty,ds.total_value,ds.no_sale_reason FROM attendance a JOIN users u ON u.id=a.worker_id JOIN stores s ON s.id=a.store_id LEFT JOIN daily_sales_reports ds ON ds.attendance_id=a.id ORDER BY a.check_in_time DESC LIMIT 300`); res.json({attendance: await attachSignedAttendance(rows)}); });
 app.patch('/api/admin/attendance/:id/face-review', auth, requireAdmin, async (req,res)=>{ const {check_type,status,note}=req.body||{}; const side=check_type==='out'?'out':'in'; const safe=['pending','approved','rejected','expired'].includes(status)?status:null; if(!safe) return res.status(400).json({error:'Status must be pending, approved, rejected, or expired.'}); const attendance=await one('SELECT * FROM attendance WHERE id=$1',[req.params.id]); if(!attendance) return res.status(404).json({error:'Attendance record not found.'}); const statusColumn=side==='in'?'in_face_review_status':'out_face_review_status'; const byColumn=side==='in'?'in_face_reviewed_by':'out_face_reviewed_by'; const atColumn=side==='in'?'in_face_reviewed_at':'out_face_reviewed_at'; const ts=nowIso(); const existing=attendance.face_review_notes?`${attendance.face_review_notes}\n`:''; const newNote=`${existing}${dayjs(ts).format('YYYY-MM-DD HH:mm')} ${side.toUpperCase()} selfie ${safe} by ${req.user.name}${note?`: ${note}`:''}`; await q(`UPDATE attendance SET ${statusColumn}=$1,${byColumn}=$2,${atColumn}=$3,face_review_notes=$4,updated_at=$5 WHERE id=$6`,[safe,req.user.id,ts,newNote,ts,req.params.id]); res.json({ok:true}); });
 app.get('/api/admin/reports/monthly', auth, requireAdmin, async (req,res)=>{ const {month,year}=req.query; let rows; if(month&&year) rows=await all('SELECT mr.*,u.name AS worker_name,u.employee_code FROM monthly_attendance_reports mr JOIN users u ON u.id=mr.worker_id WHERE mr.month=$1 AND mr.year=$2 ORDER BY u.name',[month,year]); else rows=await all('SELECT mr.*,u.name AS worker_name,u.employee_code FROM monthly_attendance_reports mr JOIN users u ON u.id=mr.worker_id ORDER BY mr.year DESC,mr.month DESC,u.name'); res.json({reports:rows}); });

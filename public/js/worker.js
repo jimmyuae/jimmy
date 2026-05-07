@@ -291,29 +291,55 @@ function renderReviewStatus(r) {
     `<span class="badge ${badgeClass(outStatus)}">OUT: ${reviewLabel(outStatus)}</span>`;
 }
 
+function updateCameraToggleButton() {
+  const btn = document.getElementById('cameraToggleBtn');
+  if (btn) btn.textContent = stream ? 'Stop Camera' : 'Start Camera';
+}
 function showLiveCameraFrame() {
-  camera.style.display = 'block';
+  camera.style.display = stream ? 'block' : 'none';
   snapshot.style.display = 'none';
   cameraPlaceholder.style.display = stream ? 'none' : 'grid';
   cameraFrame.classList.remove('captured');
+  updateCameraToggleButton();
 }
 function showCapturedCameraFrame() {
   camera.style.display = 'none';
   snapshot.style.display = 'block';
   cameraPlaceholder.style.display = 'none';
   cameraFrame.classList.add('captured');
+  updateCameraToggleButton();
 }
 async function startCamera() {
   try {
     if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
     camera.srcObject = stream;
     showLiveCameraFrame();
+    updateCameraToggleButton();
   } catch (err) {
+    updateCameraToggleButton();
     alert('Camera permission failed: ' + err.message);
+  }
+}
+function stopCamera() {
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
+  }
+  camera.srcObject = null;
+  camera.style.display = 'none';
+  cameraPlaceholder.style.display = 'grid';
+  updateCameraToggleButton();
+}
+async function toggleCamera() {
+  if (stream) {
+    stopCamera();
+  } else {
+    await startCamera();
   }
 }
 async function captureSnapshot() {
   if (!stream) await startCamera();
+  if (!stream) return null;
   await new Promise(resolve => setTimeout(resolve, 250));
   const ctx = snapshot.getContext('2d');
   ctx.drawImage(camera, 0, 0, snapshot.width, snapshot.height);
@@ -328,8 +354,9 @@ async function captureSnapshot() {
   }
   return latestImage;
 }
-function retakeSnapshot() {
+async function retakeSnapshot() {
   latestImage = null;
+  if (!stream) await startCamera();
   showLiveCameraFrame();
 }
 function getLocationNow() {
