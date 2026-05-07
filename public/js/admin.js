@@ -137,7 +137,7 @@ async function loadStores() {
         <td>${s.radius_m || 500}m</td>
         <td>${escapeHtml(s.opening_time)} - ${escapeHtml(s.closing_time)}</td>
         <td><span class="badge ${s.active ? 'ok' : 'bad'}">${s.active ? 'Active' : 'Inactive'}</span></td>
-        <td>${s.active ? `<button class="small danger" onclick="deactivateStore(${s.id})">Remove</button>` : ''}</td>
+        <td><button class="small danger" onclick="deactivateStore(${s.id})">Delete</button></td>
       </tr>
     `);
   }
@@ -304,16 +304,16 @@ async function disableProduct(id) {
 async function deactivateUser(id) {
   const user = usersCache.find(u => Number(u.id) === Number(id));
   const name = user ? `${user.name} (${user.employee_code || user.email})` : 'this user';
-  const typed = prompt(`This will permanently delete ${name} and all linked data.
+  const typed = prompt(`You are deleting sensitive data. This action will permanently delete ${name} and all linked attendance, sales, report, login, and selfie records. This cannot be undone.
 
-To continue, please write exactly: Confirm`);
+To confirm, please write exactly: Confirm`);
   if (typed === null) return;
   if (typed.trim() !== 'Confirm') {
-    alert('Delete cancelled. You must write exactly Confirm to delete the user.');
+    alert('Deletion cancelled. You must write exactly Confirm to delete the user.');
     return;
   }
   try {
-    const result = await api(`/api/admin/users/${id}`, { method: 'DELETE' });
+    const result = await api(`/api/admin/users/${id}`, { method: 'DELETE', body: JSON.stringify({ confirm: 'Confirm' }) });
     alert(result.message || 'User permanently deleted.');
     await loadUsers();
     await loadAttendance();
@@ -322,12 +322,24 @@ To continue, please write exactly: Confirm`);
   } catch (err) { alert(err.message); }
 }
 async function deactivateStore(id) {
-  if (!confirm('Remove this store from the active store list? Old attendance and sales history will stay preserved.')) return;
+  const store = storesCache.find(s => Number(s.id) === Number(id));
+  const name = store ? `${store.store_group || 'General'} / ${store.name}` : 'this store';
+  const typed = prompt(`You are deleting sensitive store data. This action will permanently delete ${name} and all linked attendance, sales, report, and selfie records. This cannot be undone.
+
+To confirm, please write exactly: Confirm`);
+  if (typed === null) return;
+  if (typed.trim() !== 'Confirm') {
+    alert('Deletion cancelled. You must write exactly Confirm to delete the store.');
+    return;
+  }
   try {
-    await api(`/api/admin/stores/${id}`, { method: 'DELETE' });
+    const result = await api(`/api/admin/stores/${id}`, { method: 'DELETE', body: JSON.stringify({ confirm: 'Confirm' }) });
+    alert(result.message || 'Store and linked data permanently deleted.');
     await loadStores();
     await loadUsers();
     await loadAttendance();
+    await loadWorkStatus();
+    await loadReports();
   } catch (err) { alert(err.message); }
 }
 async function updateFaceReview(id, checkType, status) {

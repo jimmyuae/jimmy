@@ -604,6 +604,7 @@ app.get('/api/admin/users', auth, requireAdmin, async (req,res)=>{ const rows=aw
 app.post('/api/admin/users', auth, requireAdmin, async (req,res)=>{ try { const {name,email,password,phone,employee_code,role,assigned_store_id,profile_image}=req.body||{}; if(!name||!email||!password) return res.status(400).json({error:'Name, email, and password are required.'}); const imagePath = profile_image ? await saveDataUrlImage(profile_image, `profile-user-new`) : null; const ts=nowIso(); const row=await one('INSERT INTO users (name,email,phone,employee_code,password_hash,role,active,assigned_store_id,profile_image_path,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9,$10) RETURNING id',[name,email,phone||'',employee_code||null,bcrypt.hashSync(password,10),role||'worker',assigned_store_id||null,imagePath,ts,ts]); res.json({ok:true,id:row.id}); } catch(e){ res.status(400).json({error:e.message}); }});
 app.patch('/api/admin/users/:id', auth, requireAdmin, async (req,res)=>{ try { const fields=[], params=[]; let i=1; for(const key of ['name','phone','employee_code','role','assigned_store_id','active']) if(req.body[key]!==undefined){fields.push(`${key}=$${i++}`); params.push(req.body[key]||null);} if(req.body.password){fields.push(`password_hash=$${i++}`);params.push(bcrypt.hashSync(req.body.password,10));} if(req.body.profile_image){fields.push(`profile_image_path=$${i++}`);params.push(await saveDataUrlImage(req.body.profile_image,`profile-user-${req.params.id}`));} if(!fields.length) return res.json({ok:true}); fields.push(`updated_at=$${i++}`); params.push(nowIso(), req.params.id); await q(`UPDATE users SET ${fields.join(', ')} WHERE id=$${i}`,params); res.json({ok:true}); } catch(e){ res.status(400).json({error:e.message}); }});
 app.delete('/api/admin/users/:id', auth, requireAdmin, async (req,res)=>{
+  if ((req.body?.confirm || '').trim() !== 'Confirm') return res.status(400).json({error:'Deletion not confirmed. Please type Confirm to continue.'});
   const targetId = Number(req.params.id);
   if (!Number.isFinite(targetId)) return res.status(400).json({error:'Invalid user ID.'});
   if (targetId === Number(req.user.id)) return res.status(400).json({error:'You cannot permanently delete your own account.'});
@@ -658,9 +659,89 @@ app.delete('/api/admin/users/:id', auth, requireAdmin, async (req,res)=>{
   }
 });
 app.get('/api/admin/stores', auth, requireAdmin, async (req,res)=>{ res.json({stores:await all('SELECT * FROM stores ORDER BY active DESC, store_group ASC, name ASC')}); });
-app.post('/api/admin/stores', auth, requireAdmin, async (req,res)=>{ try { const {store_group,name,code,latitude,longitude,radius_m,opening_time,closing_time}=req.body||{}; if(!name) return res.status(400).json({error:'Store name is required.'}); const safeGroup=String(store_group||'General').trim()||'General'; const safeCode=String(code||slugCode(`${safeGroup}-${name}`)).trim(); const hasLocation=latitude!==undefined&&longitude!==undefined&&String(latitude)!==''&&String(longitude)!==''; const ts=nowIso(); const row=await one('INSERT INTO stores (store_group,name,code,latitude,longitude,radius_m,location_locked,opening_time,closing_time,active,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1,$10,$11) RETURNING id',[safeGroup,name,safeCode,hasLocation?Number(latitude):0,hasLocation?Number(longitude):0,Number(radius_m||STORE_RADIUS_M),hasLocation?1:0,opening_time||'10:00',closing_time||'22:00',ts,ts]); res.json({ok:true,id:row.id}); } catch(e){ res.status(400).json({error:e.message}); }});
+app.post('/api/admin/stores', auth, requireAdmin, async (req,res)=>{ try { const {store_group,name,code,latitude,longitude,radius_m,opening_time,closing_time}=req.body||{}; if(!name) return res.status(400).json({error:'Store name is required. Use only the retailer/store name, for example Emax, Sharaf DG, or Carrefour.'}); const safeGroup=String(store_group||'General').trim()||'General'; const safeName=String(name||'').trim(); const safeCode=String(code||slugCode(`${safeGroup}-${safeName}`)).trim(); const hasLocation=latitude!==undefined&&longitude!==undefined&&String(latitude)!==''&&String(longitude)!==''; const ts=nowIso(); const row=await one('INSERT INTO stores (store_group,name,code,latitude,longitude,radius_m,location_locked,opening_time,closing_time,active,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1,$10,$11) RETURNING id',[safeGroup,safeName,safeCode,hasLocation?Number(latitude):0,hasLocation?Number(longitude):0,Number(radius_m||STORE_RADIUS_M),hasLocation?1:0,opening_time||'10:00',closing_time||'22:00',ts,ts]); res.json({ok:true,id:row.id}); } catch(e){ if(e.code==='23505' || /stores_code_key|duplicate key/i.test(e.message||'')) return res.status(409).json({error:'This store already exists for the selected location group. Please use a different store name or code.'}); res.status(400).json({error:e.message}); }});
 app.patch('/api/admin/stores/:id', auth, requireAdmin, async (req,res)=>{ const fields=[],params=[]; let i=1; for(const key of ['store_group','name','code','latitude','longitude','radius_m','opening_time','closing_time','active','location_locked']) if(req.body[key]!==undefined){fields.push(`${key}=$${i++}`);params.push(req.body[key]);} if(!fields.length) return res.json({ok:true}); fields.push(`updated_at=$${i++}`); params.push(nowIso(),req.params.id); await q(`UPDATE stores SET ${fields.join(', ')} WHERE id=$${i}`,params); res.json({ok:true}); });
-app.delete('/api/admin/stores/:id', auth, requireAdmin, async (req,res)=>{ await q('UPDATE stores SET active=0,updated_at=$1 WHERE id=$2',[nowIso(),req.params.id]); res.json({ok:true,message:'Store removed from active lists. Old attendance and sales history are preserved.'}); });
+app.delete('/api/admin/stores/:id', auth, requireAdmin, async (req,res)=>{
+  if ((req.body?.confirm || '').trim() !== 'Confirm') return res.status(400).json({error:'Deletion not confirmed. Please type Confirm to continue.'});
+  const storeId = Number(req.params.id);
+  if (!Number.isFinite(storeId)) return res.status(400).json({error:'Invalid store ID.'});
+
+  const client = await pool.connect();
+  let storagePaths = [];
+  try {
+    const storeRes = await client.query('SELECT * FROM stores WHERE id=$1', [storeId]);
+    const store = storeRes.rows[0];
+    if (!store) return res.status(404).json({error:'Store not found.'});
+
+    const storageRes = await client.query(`
+      SELECT in_face_image_path AS path FROM attendance WHERE store_id=$1 AND in_face_image_path IS NOT NULL
+      UNION ALL SELECT out_face_image_path AS path FROM attendance WHERE store_id=$1 AND out_face_image_path IS NOT NULL
+      UNION ALL
+      SELECT mr.pdf_url AS path
+      FROM monthly_attendance_reports mr
+      WHERE mr.pdf_url IS NOT NULL AND EXISTS (
+        SELECT 1 FROM attendance a
+        WHERE a.store_id=$1
+          AND a.worker_id=mr.worker_id
+          AND EXTRACT(MONTH FROM a.check_in_time::timestamptz)=mr.month
+          AND EXTRACT(YEAR FROM a.check_in_time::timestamptz)=mr.year
+      )
+    `, [storeId]);
+    storagePaths = storageRes.rows.map(r => r.path).filter(Boolean);
+
+    await client.query('BEGIN');
+
+    const attendanceIdsRes = await client.query('SELECT id FROM attendance WHERE store_id=$1', [storeId]);
+    const attendanceCount = attendanceIdsRes.rows.length;
+
+    const reportIdsRes = await client.query('SELECT id FROM daily_sales_reports WHERE store_id=$1 OR attendance_id IN (SELECT id FROM attendance WHERE store_id=$1)', [storeId]);
+    const dailyReportCount = reportIdsRes.rows.length;
+
+    const affectedMonthlyRes = await client.query(`
+      SELECT id FROM monthly_attendance_reports mr
+      WHERE EXISTS (
+        SELECT 1 FROM attendance a
+        WHERE a.store_id=$1
+          AND a.worker_id=mr.worker_id
+          AND EXTRACT(MONTH FROM a.check_in_time::timestamptz)=mr.month
+          AND EXTRACT(YEAR FROM a.check_in_time::timestamptz)=mr.year
+      )
+    `, [storeId]);
+    const monthlyReportCount = affectedMonthlyRes.rows.length;
+
+    await client.query('DELETE FROM attendance_correction_requests WHERE attendance_id IN (SELECT id FROM attendance WHERE store_id=$1)', [storeId]);
+    await client.query('DELETE FROM daily_sales_report_items WHERE daily_sales_report_id IN (SELECT id FROM daily_sales_reports WHERE store_id=$1 OR attendance_id IN (SELECT id FROM attendance WHERE store_id=$1))', [storeId]);
+    await client.query('DELETE FROM daily_sales_reports WHERE store_id=$1 OR attendance_id IN (SELECT id FROM attendance WHERE store_id=$1)', [storeId]);
+    await client.query(`DELETE FROM monthly_attendance_reports mr WHERE EXISTS (
+      SELECT 1 FROM attendance a
+      WHERE a.store_id=$1
+        AND a.worker_id=mr.worker_id
+        AND EXTRACT(MONTH FROM a.check_in_time::timestamptz)=mr.month
+        AND EXTRACT(YEAR FROM a.check_in_time::timestamptz)=mr.year
+    )`, [storeId]);
+    await client.query('UPDATE users SET assigned_store_id=NULL, updated_at=$1 WHERE assigned_store_id=$2', [nowIso(), storeId]);
+    await client.query('DELETE FROM attendance WHERE store_id=$1', [storeId]);
+    await client.query('DELETE FROM stores WHERE id=$1', [storeId]);
+
+    await client.query('COMMIT');
+
+    const deletedStorageObjects = await removeStorageObjects(storagePaths);
+    res.json({
+      ok:true,
+      message:'Store and all linked data permanently deleted.',
+      deleted_store_id: storeId,
+      deleted_attendance_records: attendanceCount,
+      deleted_daily_sales_reports: dailyReportCount,
+      deleted_monthly_reports: monthlyReportCount,
+      deleted_storage_objects: deletedStorageObjects
+    });
+  } catch(e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    res.status(400).json({error:e.message});
+  } finally {
+    client.release();
+  }
+});
 app.get('/api/admin/products', auth, requireAdmin, async (req,res)=>{ res.json({products:await all('SELECT * FROM products ORDER BY active DESC, display_order ASC, model ASC')}); });
 app.post('/api/admin/products', auth, requireAdmin, async (req,res)=>{ const {model,name,category,default_price,display_order}=req.body||{}; if(!model) return res.status(400).json({error:'Product model is required.'}); const ts=nowIso(); const row=await one('INSERT INTO products (model,name,category,default_price,active,display_order,created_at,updated_at) VALUES ($1,$2,$3,$4,1,$5,$6,$7) RETURNING id',[model,name||model,category||'',Number(default_price||0),Number(display_order||0),ts,ts]); res.json({ok:true,id:row.id}); });
 app.patch('/api/admin/products/:id', auth, requireAdmin, async (req,res)=>{ const fields=[],params=[]; let i=1; for(const key of ['model','name','category','default_price','display_order','active']) if(req.body[key]!==undefined){fields.push(`${key}=$${i++}`);params.push(req.body[key]);} if(!fields.length) return res.json({ok:true}); fields.push(`updated_at=$${i++}`); params.push(nowIso(),req.params.id); await q(`UPDATE products SET ${fields.join(', ')} WHERE id=$${i}`,params); res.json({ok:true}); });

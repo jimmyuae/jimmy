@@ -121,7 +121,7 @@
             <h2>Add Store</h2>
             <form id="storeForm" class="form-grid">
               <div><label>Location Group / Mall</label><input name="store_group" placeholder="OASIS MALL" required></div>
-              <div><label>Store Name</label><input name="name" placeholder="EMAX OASIS MALL or Sharaf DG" required></div>
+              <div><label>Store Name</label><input name="name" list="storeNameSuggestions" placeholder="Emax, Sharaf DG, Carrefour" required><datalist id="storeNameSuggestions"><option value="Emax"><option value="Sharaf DG"><option value="Carrefour"><option value="Jumbo"><option value="LuLu"></datalist></div>
               <div><label>Code (optional)</label><input name="code" placeholder="Auto-created if blank"></div>
               <div><label>Allowed Radius Meters</label><input name="radius_m" type="number" value="500"></div>
               <div><label>Opening Time</label><input name="opening_time" value="10:00"></div>
