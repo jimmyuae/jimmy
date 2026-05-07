@@ -135,6 +135,61 @@ function renderSignupRequests() {
   `).join('') || '<tr><td colspan="10">No pending signup requests.</td></tr>';
 }
 
+async function loadPasswordResetRequests() {
+  try {
+    const data = await api('/api/admin/password-reset-requests');
+    passwordRequestsCache = data.requests || [];
+    if (typeof statPendingPasswordRequests !== 'undefined') {
+      statPendingPasswordRequests.textContent = passwordRequestsCache.filter(r => r.status === 'pending').length;
+    }
+    renderPasswordResetRequests();
+  } catch (err) {
+    console.warn('Could not load password reset requests', err);
+    if (typeof statPendingPasswordRequests !== 'undefined') statPendingPasswordRequests.textContent = '0';
+    if (typeof passwordRequestRows !== 'undefined') passwordRequestRows.innerHTML = '<tr><td colspan="10">Could not load password reset requests.</td></tr>';
+  }
+}
+
+function renderPasswordResetRequests() {
+  passwordRequestRows.innerHTML = passwordRequestsCache.map(r => `
+    <tr>
+      <td>${avatarHtml(r.profile_image_path, r.name)}</td>
+      <td>${escapeHtml(r.name || '-')}</td>
+      <td>${escapeHtml(r.email || '-')}</td>
+      <td>${escapeHtml(r.phone || '-')}</td>
+      <td>${escapeHtml(r.employee_code || '-')}</td>
+      <td>${escapeHtml(r.role === 'worker' ? 'Merchandiser' : (r.role || '-'))}</td>
+      <td>${escapeHtml(r.identifier_snapshot || '-')}</td>
+      <td>${fmtDate(r.requested_at)}</td>
+      <td><span class="badge ${r.status === 'pending' ? 'warn' : 'bad'}">${escapeHtml(r.status || 'pending')}</span></td>
+      <td>${r.status === 'pending' ? `<div class="toolbar"><button class="small" onclick="approvePasswordReset(${r.id})">Approve</button><button class="small danger" onclick="declinePasswordReset(${r.id})">Decline</button></div>` : '<span class="muted">Reviewed</span>'}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="10">No password reset requests.</td></tr>';
+}
+
+async function approvePasswordReset(id) {
+  const request = passwordRequestsCache.find(r => Number(r.id) === Number(id));
+  const name = request ? `${request.name} (${request.employee_code || request.email || request.phone || 'account'})` : 'this account';
+  if (!confirm(`Approve password reset request for ${name}?`)) return;
+  try {
+    const result = await api(`/api/admin/password-reset-requests/${id}/approve`, { method: 'PATCH' });
+    alert(result.message || 'Password reset approved.');
+    await loadPasswordResetRequests();
+    await loadUsers();
+  } catch (err) { alert(err.message); }
+}
+
+async function declinePasswordReset(id) {
+  const request = passwordRequestsCache.find(r => Number(r.id) === Number(id));
+  const note = prompt(`Decline password reset request for ${request ? request.name : 'this account'}? Optional note:`, '');
+  if (note === null) return;
+  try {
+    const result = await api(`/api/admin/password-reset-requests/${id}/decline`, { method: 'PATCH', body: JSON.stringify({ note }) });
+    alert(result.message || 'Password reset request declined.');
+    await loadPasswordResetRequests();
+  } catch (err) { alert(err.message); }
+}
+
 async function approveSignup(id) {
   const request = signupRequestsCache.find(r => Number(r.id) === Number(id));
   if (!confirm(`Approve ${request ? request.name : 'this merchandiser'} account request?`)) return;

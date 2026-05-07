@@ -26,14 +26,16 @@
       <div class="app-splash-dots"><span></span><span></span><span></span></div>
     </div>
   </div>
-  <div class="mobile-menu"><span><img src="/assets/jimmy-logo.svg" alt="Jimmy"> Admin</span><button class="small secondary" onclick="toggleSidebar()">Menu</button></div>
+  <div class="mobile-menu"><span><img src="/assets/jimmy-logo-white.svg" alt="Jimmy"> Admin</span><button class="small secondary" onclick="toggleSidebar()">Menu</button></div>
   <div class="app-shell">
     <aside class="sidebar" id="sidebar">
-      <div class="logo"><img src="/assets/jimmy-logo.svg" alt="Jimmy"><span>Jimmy</span></div>
+      <div class="logo"><img src="/assets/jimmy-logo-white.svg" alt="Jimmy"></div>
       <nav class="nav">
         <a href="#overview" class="active" data-section-link>Overview</a>
         <a href="#profile" data-section-link>Profile</a>
         <a href="#workers" data-section-link>Merchandisers</a>
+        <a href="#signupRequests" data-section-link>Signup Requests</a>
+        <a href="#passwordRequests" data-section-link>Password Requests</a>
         <a href="#stores" data-section-link>Stores</a>
         <a href="#products" data-section-link>Products</a>
         <a href="#attendance" data-section-link>Attendance</a>
@@ -50,7 +52,7 @@
           <div id="adminDashboardAvatar"></div>
           <div>
             <h2 id="adminDashboardName">Admin</h2>
-            <p class="muted">Staff/Admin ID: <b id="adminDashboardId">-</b></p>
+            <p class="muted">Merchandiser/Admin ID: <b id="adminDashboardId">-</b></p>
             <p class="muted">Last Login: <b id="adminLastLogin">-</b> · Last Logout: <b id="adminLastLogout">-</b></p>
           </div>
         </div>
@@ -58,6 +60,8 @@
           <div class="stat"><span class="muted">Total Merchandisers</span><b id="statWorkers">0</b></div>
           <div class="stat"><span class="muted">Merchandisers On Duty Now</span><b id="statWorkingNow">0</b></div>
           <div class="stat"><span class="muted">Merchandisers Finished Today</span><b id="statFinishedToday">0</b></div>
+          <div class="stat"><span class="muted">Pending Signup Requests</span><b id="statPendingRequests">0</b></div>
+          <div class="stat"><span class="muted">Pending Password Requests</span><b id="statPendingPasswordRequests">0</b></div>
           <div class="stat"><span class="muted">Stores</span><b id="statStores">0</b></div>
           <div class="stat"><span class="muted">Products</span><b id="statProducts">0</b></div>
           <div class="stat"><span class="muted">Attendance Logs</span><b id="statAttendance">0</b></div>
@@ -72,7 +76,7 @@
               <div id="adminProfileAvatar"></div>
               <div>
                 <p><strong>Name:</strong> <span id="adminProfileName">-</span></p>
-                <p><strong>Staff/Admin ID:</strong> <span id="adminProfileId">-</span></p>
+                <p><strong>Merchandiser/Admin ID:</strong> <span id="adminProfileId">-</span></p>
                 <p><strong>Role:</strong> <span id="adminProfileRole">-</span></p>
               </div>
             </div>
@@ -95,7 +99,7 @@
               <div><label>Email</label><input name="email" type="email" required></div>
               <div><label>Password</label><input name="password" type="password" required></div>
               <div><label>Phone</label><input name="phone"></div>
-              <div><label>Staff/Admin ID</label><input name="employee_code" placeholder="EMP-002 or ADMIN-002"></div>
+              <div><label>Merchandiser/Admin ID</label><input name="employee_code" placeholder="EMP-002 or ADMIN-002"></div>
               <div><label>Role</label><select name="role"><option value="worker">Merchandiser</option><option value="manager">Manager</option><option value="admin">Admin</option></select></div>
               <div><label>Assigned Store</label><select name="assigned_store_id" id="workerStoreSelect"></select></div>
               <div><label>Profile Picture</label><input id="newUserProfilePhoto" type="file" accept="image/*"></div>
@@ -109,25 +113,44 @@
               <select id="userGroupFilter"><option value="">All location groups</option></select>
               <select id="userStoreFilter"><option value="">All stores</option></select>
             </div>
-            <div class="table-wrap"><table><thead><tr><th>Profile</th><th>Name</th><th>Staff/Admin ID</th><th>Email</th><th>Role</th><th>Location Group</th><th>Store</th><th>Location Warnings</th><th>Last Login</th><th>Status</th><th>Action</th></tr></thead><tbody id="usersRows"></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>Profile</th><th>Name</th><th>Merchandiser/Admin ID</th><th>Email</th><th>Role</th><th>Location Group</th><th>Store</th><th>Location Warnings</th><th>Last Login</th><th>Status</th><th>Action</th></tr></thead><tbody id="usersRows"></tbody></table></div>
           </div>
         </div>
       </section>
 
-      <section id="stores" class="section">
+
+      <section id="signupRequests" class="section">
+        <div class="card">
+          <h2>Pending Merchandiser Requests</h2>
+          <p class="hint">Merchandisers can submit account requests from the main login page. Admin or Manager must approve before they can login. If they typed a new mall/store, the store will be created automatically after approval.</p>
+          <div class="table-wrap"><table><thead><tr><th>Profile</th><th>Name</th><th>Email</th><th>Phone</th><th>Employee ID</th><th>Mall</th><th>Store</th><th>Requested</th><th>Status</th><th>Action</th></tr></thead><tbody id="signupRequestRows"></tbody></table></div>
+        </div>
+      </section>
+
+      
+      <section id="passwordRequests" class="section">
+        <div class="card">
+          <h2>Password Reset Requests</h2>
+          <p class="hint">Users can request a new password using their registered email or phone number. The new password becomes active only after Admin or Manager approval.</p>
+          <div class="table-wrap"><table><thead><tr><th>Profile</th><th>Name</th><th>Email</th><th>Phone</th><th>Merchandiser/Admin ID</th><th>Role</th><th>Requested With</th><th>Requested</th><th>Status</th><th>Action</th></tr></thead><tbody id="passwordRequestRows"></tbody></table></div>
+        </div>
+      </section>
+
+
+<section id="stores" class="section">
         <div class="grid cols-2">
           <div class="card">
             <h2>Add Store</h2>
             <form id="storeForm" class="form-grid">
-              <div><label>Location Group / Mall</label><input name="store_group" placeholder="OASIS MALL" required></div>
-              <div><label>Store Name</label><input name="name" placeholder="EMAX OASIS MALL or Sharaf DG" required></div>
+              <div><label>Location Group / Mall</label><input name="store_group" list="mallSuggestions" placeholder="Mall Name" required><datalist id="mallSuggestions"><option value="OASIS MALL"><option value="Dubai Mall"><option value="City Centre Deira"><option value="Mall of the Emirates"></datalist></div>
+              <div><label>Store Name</label><input name="name" list="storeNameSuggestions" placeholder="Emax, Sharaf DG, Carrefour" required><datalist id="storeNameSuggestions"><option value="Emax"><option value="Sharaf DG"><option value="Carrefour"></datalist></div>
               <div><label>Code (optional)</label><input name="code" placeholder="Auto-created if blank"></div>
               <div><label>Allowed Radius Meters</label><input name="radius_m" type="number" value="500"></div>
               <div><label>Opening Time</label><input name="opening_time" value="10:00"></div>
               <div><label>Closing Time</label><input name="closing_time" value="22:00"></div>
               <button type="submit">Add Store</button>
             </form>
-            <p class="hint">Store GPS is captured automatically from the first staff check-in. Future check-in/check-out is checked within 0.5 KM.</p>
+            <p class="hint">Store GPS is captured automatically from the first merchandiser check-in. Future check-in/check-out is checked within 0.5 KM.</p>
           </div>
           <div class="card">
             <h2>Stores</h2>
@@ -187,6 +210,7 @@
     </main>
   </div>
   <script src="/js/common.js"></script>
+  <script src="/js/chat.js"></script>
   <script src="/js/admin.js"></script>
 </body>
 </html>

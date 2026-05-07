@@ -694,9 +694,14 @@ app.post('/api/auth/password-reset-request', async (req,res)=>{
     const safeIdentifier = String(identifier || '').trim();
     if(!safeIdentifier || !new_password) return res.status(400).json({error:'Valid email or phone number and new password are required.'});
     if(String(new_password).length < 6) return res.status(400).json({error:'New password must be at least 6 characters.'});
-    const user = await one(`SELECT id,name,email,phone,employee_code,approval_status,active FROM users WHERE lower(email)=lower($1) OR phone=$1 LIMIT 1`, [safeIdentifier]);
-    if(!user) return res.status(404).json({error:'No account found with this email or phone number.'});
-    if(user.approval_status !== 'approved' || !Number(user.active)) return res.status(400).json({error:'This account is not active. Please contact Admin.'});
+    const digits = safeIdentifier.replace(/\D/g, '');
+    let user = await one(`SELECT id,name,email,phone,employee_code,approval_status,active FROM users WHERE lower(email)=lower($1) OR lower(employee_code)=lower($1) LIMIT 1`, [safeIdentifier]);
+    if(!user && digits) {
+      user = await one(`SELECT id,name,email,phone,employee_code,approval_status,active FROM users WHERE regexp_replace(COALESCE(phone,''), '\D', '', 'g')=$1 LIMIT 1`, [digits]);
+    }
+    if(!user) return res.status(404).json({error:'No active account found with this email or phone number.'});
+    const approval = user.approval_status || 'approved';
+    if(approval !== 'approved' || !Number(user.active)) return res.status(400).json({error:'This account is not active. Please contact Admin.'});
     const existing = await one("SELECT id FROM password_reset_requests WHERE user_id=$1 AND status='pending' ORDER BY id DESC LIMIT 1", [user.id]);
     if(existing) return res.status(409).json({error:'A password reset request is already pending for this account.'});
     const ts = nowIso();

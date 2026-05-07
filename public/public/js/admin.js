@@ -5,6 +5,8 @@ let storesCache = [];
 let usersCache = [];
 let attendanceCache = [];
 let adminCache = null;
+let signupRequestsCache = [];
+let passwordRequestsCache = [];
 
 async function bootAdmin() {
   const me = await api('/api/me');
@@ -47,6 +49,8 @@ async function uploadAdminProfilePhoto() {
 async function refreshAll() {
   await loadStores();
   await loadUsers();
+  await loadSignupRequests();
+  await loadPasswordResetRequests();
   await loadProducts();
   await loadAttendance();
   await loadWorkStatus();
@@ -90,7 +94,7 @@ function renderUsers() {
       <td>${escapeHtml(u.name)}</td>
       <td>${escapeHtml(u.employee_code || '-')}</td>
       <td>${escapeHtml(u.email)}</td>
-      <td>${escapeHtml(u.role === 'worker' ? 'merchandiser' : u.role)}</td>
+      <td>${escapeHtml(u.role === 'worker' ? 'Merchandiser' : u.role)}</td>
       <td>${escapeHtml(u.store_group || '-')}</td>
       <td>${escapeHtml(u.store_name || '-')}</td>
       <td><span class="badge ${Number(u.location_warning_count || 0) ? 'bad' : 'ok'}">${Number(u.location_warning_count || 0)}</span></td>
@@ -100,6 +104,115 @@ function renderUsers() {
     </tr>
   `).join('') || '<tr><td colspan="11">No users match this filter.</td></tr>';
 }
+
+async function loadSignupRequests() {
+  try {
+    const data = await api('/api/admin/signup-requests');
+    signupRequestsCache = data.requests || [];
+    statPendingRequests.textContent = signupRequestsCache.filter(r => r.approval_status === 'pending').length;
+    renderSignupRequests();
+  } catch (err) {
+    console.warn('Could not load signup requests', err);
+    statPendingRequests.textContent = '0';
+    if (typeof signupRequestRows !== 'undefined') signupRequestRows.innerHTML = '<tr><td colspan="10">Could not load signup requests.</td></tr>';
+  }
+}
+
+function renderSignupRequests() {
+  signupRequestRows.innerHTML = signupRequestsCache.map(r => `
+    <tr>
+      <td>${avatarHtml(r.profile_image_path, r.name)}</td>
+      <td>${escapeHtml(r.name)}</td>
+      <td>${escapeHtml(r.email)}</td>
+      <td>${escapeHtml(r.phone || '-')}</td>
+      <td>${escapeHtml(r.employee_code || '-')}</td>
+      <td>${escapeHtml(r.store_group || '-')}</td>
+      <td>${escapeHtml(r.store_name || '-')}${Number(r.needs_store_creation) ? '<br><span class="badge warn">New store request</span>' : ''}</td>
+      <td>${fmtDate(r.approval_requested_at)}</td>
+      <td><span class="badge ${r.approval_status === 'pending' ? 'warn' : 'bad'}">${escapeHtml(r.approval_status || 'pending')}</span></td>
+      <td>${r.approval_status === 'pending' ? `<div class="toolbar"><button class="small" onclick="approveSignup(${r.id})">Approve</button><button class="small danger" onclick="declineSignup(${r.id})">Decline</button></div>` : '<span class="muted">Reviewed</span>'}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="10">No pending signup requests.</td></tr>';
+}
+
+async function loadPasswordResetRequests() {
+  try {
+    const data = await api('/api/admin/password-reset-requests');
+    passwordRequestsCache = data.requests || [];
+    if (typeof statPendingPasswordRequests !== 'undefined') {
+      statPendingPasswordRequests.textContent = passwordRequestsCache.filter(r => r.status === 'pending').length;
+    }
+    renderPasswordResetRequests();
+  } catch (err) {
+    console.warn('Could not load password reset requests', err);
+    if (typeof statPendingPasswordRequests !== 'undefined') statPendingPasswordRequests.textContent = '0';
+    if (typeof passwordRequestRows !== 'undefined') passwordRequestRows.innerHTML = '<tr><td colspan="10">Could not load password reset requests.</td></tr>';
+  }
+}
+
+function renderPasswordResetRequests() {
+  passwordRequestRows.innerHTML = passwordRequestsCache.map(r => `
+    <tr>
+      <td>${avatarHtml(r.profile_image_path, r.name)}</td>
+      <td>${escapeHtml(r.name || '-')}</td>
+      <td>${escapeHtml(r.email || '-')}</td>
+      <td>${escapeHtml(r.phone || '-')}</td>
+      <td>${escapeHtml(r.employee_code || '-')}</td>
+      <td>${escapeHtml(r.role === 'worker' ? 'Merchandiser' : (r.role || '-'))}</td>
+      <td>${escapeHtml(r.identifier_snapshot || '-')}</td>
+      <td>${fmtDate(r.requested_at)}</td>
+      <td><span class="badge ${r.status === 'pending' ? 'warn' : 'bad'}">${escapeHtml(r.status || 'pending')}</span></td>
+      <td>${r.status === 'pending' ? `<div class="toolbar"><button class="small" onclick="approvePasswordReset(${r.id})">Approve</button><button class="small danger" onclick="declinePasswordReset(${r.id})">Decline</button></div>` : '<span class="muted">Reviewed</span>'}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="10">No password reset requests.</td></tr>';
+}
+
+async function approvePasswordReset(id) {
+  const request = passwordRequestsCache.find(r => Number(r.id) === Number(id));
+  const name = request ? `${request.name} (${request.employee_code || request.email || request.phone || 'account'})` : 'this account';
+  if (!confirm(`Approve password reset request for ${name}?`)) return;
+  try {
+    const result = await api(`/api/admin/password-reset-requests/${id}/approve`, { method: 'PATCH' });
+    alert(result.message || 'Password reset approved.');
+    await loadPasswordResetRequests();
+    await loadUsers();
+  } catch (err) { alert(err.message); }
+}
+
+async function declinePasswordReset(id) {
+  const request = passwordRequestsCache.find(r => Number(r.id) === Number(id));
+  const note = prompt(`Decline password reset request for ${request ? request.name : 'this account'}? Optional note:`, '');
+  if (note === null) return;
+  try {
+    const result = await api(`/api/admin/password-reset-requests/${id}/decline`, { method: 'PATCH', body: JSON.stringify({ note }) });
+    alert(result.message || 'Password reset request declined.');
+    await loadPasswordResetRequests();
+  } catch (err) { alert(err.message); }
+}
+
+async function approveSignup(id) {
+  const request = signupRequestsCache.find(r => Number(r.id) === Number(id));
+  if (!confirm(`Approve ${request ? request.name : 'this merchandiser'} account request?`)) return;
+  try {
+    const result = await api(`/api/admin/signup-requests/${id}/approve`, { method: 'PATCH' });
+    alert(result.message || 'Signup request approved.');
+    await loadSignupRequests();
+    await loadUsers();
+    await loadStores();
+  } catch (err) { alert(err.message); }
+}
+
+async function declineSignup(id) {
+  const request = signupRequestsCache.find(r => Number(r.id) === Number(id));
+  const note = prompt(`Decline ${request ? request.name : 'this merchandiser'} account request? Optional note:`, '');
+  if (note === null) return;
+  try {
+    const result = await api(`/api/admin/signup-requests/${id}/decline`, { method: 'PATCH', body: JSON.stringify({ note }) });
+    alert(result.message || 'Signup request declined.');
+    await loadSignupRequests();
+  } catch (err) { alert(err.message); }
+}
+
 
 async function loadStores() {
   const data = await api('/api/admin/stores');
@@ -113,6 +226,12 @@ async function loadStores() {
 
   const groupOptions = `<option value="">All location groups</option>${groups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('')}`;
   const storeOptions = `<option value="">All stores</option>${groupedOpts}`;
+  const mallSuggestionValues = [...new Set(['OASIS MALL', 'Dubai Mall', 'City Centre Deira', 'Mall of the Emirates', ...groups])];
+  const storeSuggestionValues = [...new Set(['Emax', 'Sharaf DG', 'Carrefour', ...activeStores.map(s => s.name).filter(Boolean)])];
+  const mallSuggestions = document.getElementById('mallSuggestions');
+  const storeNameSuggestions = document.getElementById('storeNameSuggestions');
+  if (mallSuggestions) mallSuggestions.innerHTML = mallSuggestionValues.map(v => `<option value="${escapeHtml(v)}"></option>`).join('');
+  if (storeNameSuggestions) storeNameSuggestions.innerHTML = storeSuggestionValues.map(v => `<option value="${escapeHtml(v)}"></option>`).join('');
   if (userGroupFilter) userGroupFilter.innerHTML = groupOptions;
   if (attendanceGroupFilter) attendanceGroupFilter.innerHTML = groupOptions;
   if (userStoreFilter) userStoreFilter.innerHTML = storeOptions;
@@ -127,7 +246,7 @@ async function loadStores() {
       currentGroup = group;
     }
     const captured = Number(s.location_locked);
-    const locText = captured ? `${Number(s.latitude).toFixed(5)}, ${Number(s.longitude).toFixed(5)}<br><span class="muted">Captured: ${fmtDate(s.location_captured_at)}</span>` : '<span class="badge warn">Pending first staff check-in</span>';
+    const locText = captured ? `${Number(s.latitude).toFixed(5)}, ${Number(s.longitude).toFixed(5)}<br><span class="muted">Captured: ${fmtDate(s.location_captured_at)}</span>` : '<span class="badge warn">Pending first merchandiser check-in</span>';
     rows.push(`
       <tr>
         <td>${escapeHtml(group)}</td>
@@ -154,7 +273,7 @@ async function loadProducts() {
       <td><input style="width:110px" type="number" step="0.01" value="${Number(p.default_price || 0)}" onchange="updateProduct(${p.id}, {default_price: this.value})"></td>
       <td><input style="width:80px" type="number" value="${Number(p.display_order || 0)}" onchange="updateProduct(${p.id}, {display_order: this.value})"></td>
       <td><span class="badge ${p.active ? 'ok' : 'bad'}">${p.active ? 'Active' : 'Inactive'}</span></td>
-      <td>${p.active ? `<button class="small danger" onclick="disableProduct(${p.id})">Disable</button>` : ''}</td>
+      <td><button class="small danger" onclick="deleteProduct(${p.id})">Delete</button></td>
     </tr>
   `).join('') || '<tr><td colspan="6">No products.</td></tr>';
 }
@@ -268,12 +387,12 @@ storeForm.addEventListener('submit', async e => {
     const payload = formToObject(storeForm);
     await api('/api/admin/stores', { method: 'POST', body: JSON.stringify(payload) });
     storeForm.reset();
-    storeForm.store_group.value = 'General';
+    storeForm.store_group.value = '';
     storeForm.radius_m.value = 500;
     storeForm.opening_time.value = '10:00';
     storeForm.closing_time.value = '22:00';
     await loadStores();
-    alert('Store added. Location will be captured automatically from first staff check-in.');
+    alert('Store added. Location will be captured automatically from first merchandiser check-in.');
   } catch (err) { alert(err.message); }
 });
 
@@ -294,10 +413,20 @@ async function updateProduct(id, patch) {
     await loadProducts();
   } catch (err) { alert(err.message); }
 }
-async function disableProduct(id) {
-  if (!confirm('Disable this product from the active logout sales list? Old reports will stay unchanged.')) return;
+async function deleteProduct(id) {
+  const row = [...document.querySelectorAll('#productsRows tr')].find(tr => tr.querySelector(`button[onclick="deleteProduct(${id})"]`));
+  const productName = row ? row.children[0]?.textContent?.trim() : 'this product';
+  const typed = prompt(`This will permanently delete ${productName} from the server and dashboard. Existing sales report history will keep the saved product name/value snapshot.
+
+To continue, please write exactly: Confirm`);
+  if (typed === null) return;
+  if (String(typed || '').trim().toLowerCase() !== 'confirm') {
+    alert('Deletion not confirmed. Please type Confirm to continue.');
+    return;
+  }
   try {
-    await api(`/api/admin/products/${id}`, { method: 'DELETE' });
+    const result = await api(`/api/admin/products/${id}`, { method: 'DELETE' });
+    alert(result.message || 'Product permanently deleted.');
     await loadProducts();
   } catch (err) { alert(err.message); }
 }
