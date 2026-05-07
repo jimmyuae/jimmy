@@ -66,7 +66,7 @@
     document.body.appendChild(wrap);
     document.getElementById('jimmyChatButton').addEventListener('click', openChat);
     document.getElementById('jimmyChatClose').addEventListener('click', closeChat);
-    document.getElementById('jimmyChatSend').addEventListener('click', sendChatMessage);
+    document.getElementById('jimmyChatSend').addEventListener('click', () => sendChatMessage());
     document.getElementById('jimmyChatAttach').addEventListener('click', () => document.getElementById('jimmyChatFile').click());
     document.getElementById('jimmyChatFile').addEventListener('change', renderAttachPreview);
     document.getElementById('jimmyChatReplyClear').addEventListener('click', clearReply);
@@ -223,10 +223,18 @@
 
   async function sendChatMessage(extraFileData = null, extraFileName = null, extraType = null) {
     try {
+      // When used as a click handler, browsers pass a MouseEvent as the first argument.
+      // That must never be treated as a file, otherwise the server receives an invalid
+      // file payload and returns "A valid file is required.".
+      if (extraFileData && typeof extraFileData !== 'string') {
+        extraFileData = null;
+        extraFileName = null;
+        extraType = null;
+      }
       const input = document.getElementById('jimmyChatInput');
       const fileInput = document.getElementById('jimmyChatFile');
       const selectedFile = fileInput?.files?.[0] || null;
-      let fileDataUrl = extraFileData || null;
+      let fileDataUrl = typeof extraFileData === 'string' && extraFileData.startsWith('data:') ? extraFileData : null;
       let fileName = extraFileName || null;
       let messageType = extraType || 'text';
 
