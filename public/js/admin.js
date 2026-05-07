@@ -92,7 +92,7 @@ function renderUsers() {
       <td>${escapeHtml(u.name)}</td>
       <td>${escapeHtml(u.employee_code || '-')}</td>
       <td>${escapeHtml(u.email)}</td>
-      <td>${escapeHtml(u.role === 'worker' ? 'merchandiser' : u.role)}</td>
+      <td>${escapeHtml(u.role === 'worker' ? 'Merchandiser' : u.role)}</td>
       <td>${escapeHtml(u.store_group || '-')}</td>
       <td>${escapeHtml(u.store_name || '-')}</td>
       <td><span class="badge ${Number(u.location_warning_count || 0) ? 'bad' : 'ok'}">${Number(u.location_warning_count || 0)}</span></td>
@@ -182,7 +182,7 @@ async function loadStores() {
       currentGroup = group;
     }
     const captured = Number(s.location_locked);
-    const locText = captured ? `${Number(s.latitude).toFixed(5)}, ${Number(s.longitude).toFixed(5)}<br><span class="muted">Captured: ${fmtDate(s.location_captured_at)}</span>` : '<span class="badge warn">Pending first staff check-in</span>';
+    const locText = captured ? `${Number(s.latitude).toFixed(5)}, ${Number(s.longitude).toFixed(5)}<br><span class="muted">Captured: ${fmtDate(s.location_captured_at)}</span>` : '<span class="badge warn">Pending first merchandiser check-in</span>';
     rows.push(`
       <tr>
         <td>${escapeHtml(group)}</td>
@@ -328,7 +328,7 @@ storeForm.addEventListener('submit', async e => {
     storeForm.opening_time.value = '10:00';
     storeForm.closing_time.value = '22:00';
     await loadStores();
-    alert('Store added. Location will be captured automatically from first staff check-in.');
+    alert('Store added. Location will be captured automatically from first merchandiser check-in.');
   } catch (err) { alert(err.message); }
 });
 

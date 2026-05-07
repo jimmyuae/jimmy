@@ -25,7 +25,8 @@
       mic: '<svg class="chat-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8.5 21h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
       send: '<svg class="chat-svg-icon send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11.2 20 3.8c.7-.3 1.4.4 1.1 1.1l-7.3 16.5c-.3.7-1.3.7-1.6 0l-2.4-6.2-6.2-2.4c-.8-.3-.8-1.3-.1-1.6Z" fill="currentColor"/><path d="m10 14 5-5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
       stop: '<svg class="chat-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></svg>',
-      doc: '<svg class="chat-svg-icon doc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h6l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13 3v5h5M8.5 13h7M8.5 16h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      doc: '<svg class="chat-svg-icon doc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h6l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13 3v5h5M8.5 13h7M8.5 16h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      close: '<svg class="chat-svg-icon close-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5 17.5 17.5M17.5 6.5 6.5 17.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>'
     };
     return icons[name] || '';
   }
@@ -41,11 +42,11 @@
       </button>
       <div id="jimmyChatPanel" class="chat-panel" aria-hidden="true">
         <div class="chat-header">
-          <div class="chat-group-title"><img src="/assets/jimmy-logo.svg" alt="Jimmy"><div><b>Jimmy Community</b><span>Admin, Manager and Merchandisers</span></div></div>
-          <button class="chat-close" type="button" id="jimmyChatClose">×</button>
+          <div class="chat-group-title"><picture><source srcset="/assets/jimmy-logo-white.svg" media="(prefers-color-scheme: dark)"><img src="/assets/jimmy-logo-white.svg" alt="Jimmy"></picture><div><b>Jimmy Community</b><span>Admin, Manager and Merchandisers</span></div></div>
+          <button class="chat-close" type="button" id="jimmyChatClose" aria-label="Close chat">${chatSvgIcon('close')}</button>
         </div>
         <div id="jimmyChatMessages" class="chat-messages"></div>
-        <div id="jimmyChatReply" class="chat-reply-preview" style="display:none"><div><b id="jimmyChatReplyName"></b><span id="jimmyChatReplyBody"></span></div><button type="button" id="jimmyChatReplyClear">×</button></div>
+        <div id="jimmyChatReply" class="chat-reply-preview" style="display:none"><div><b id="jimmyChatReplyName"></b><span id="jimmyChatReplyBody"></span></div><button type="button" id="jimmyChatReplyClear" aria-label="Clear reply">${chatSvgIcon('close')}</button></div>
         <div id="jimmyChatAttachPreview" class="chat-attach-preview" style="display:none"></div>
         <div id="jimmyChatRecordingBar" class="chat-recording-bar" style="display:none">
           <span class="record-dot"></span>
@@ -370,8 +371,8 @@
       const avatar = u.profile_image_path ? `<img src="${escapeAttr(u.profile_image_path)}" alt="${escapeAttr(u.name)}">` : `<span>${escapeHtml((u.name || 'U')[0])}</span>`;
       const direction = data.direction === 'higher' ? 'higher than' : data.direction === 'lower' ? 'lower than' : 'equal to';
       modal.innerHTML = `<div class="chat-profile-card">
-        <button class="chat-profile-close" onclick="document.getElementById('jimmyChatProfileModal').style.display='none'">×</button>
-        <div class="chat-profile-head"><div class="chat-profile-avatar">${avatar}</div><div><h2>${escapeHtml(u.name)} ${verifiedBadge()}</h2><p>${escapeHtml(u.employee_code || '')} · ${escapeHtml(u.role)}</p></div></div>
+        <button class="chat-profile-close" aria-label="Close profile" onclick="document.getElementById('jimmyChatProfileModal').style.display='none'">${chatSvgIcon('close')}</button>
+        <div class="chat-profile-head"><div class="chat-profile-avatar">${avatar}</div><div><h2>${escapeHtml(u.name)} ${verifiedBadge()}</h2><p>${escapeHtml(u.employee_code || '')} · ${escapeHtml(u.role === 'worker' ? 'Merchandiser' : u.role)}</p></div></div>
         <div class="chat-profile-stats">
           <div><span>This Month Products</span><b>${Number(data.current.qty || 0)}</b></div>
           <div><span>This Month Sales</span><b>${Number(data.current.value || 0).toFixed(2)}</b></div>

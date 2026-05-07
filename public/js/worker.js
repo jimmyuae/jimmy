@@ -31,7 +31,7 @@ function renderProfile(u) {
   dashboardStaffId.textContent = u.employee_code || u.email;
   profileName.textContent = u.name;
   profileStaffId.textContent = u.employee_code || u.email;
-  profileRole.textContent = u.role === 'worker' ? 'Staff / Merchandiser' : u.role;
+  profileRole.textContent = u.role === 'worker' ? 'Merchandiser' : u.role;
   locationWarningCount.textContent = u.location_warning_count || 0;
   profileWarnings.textContent = u.location_warning_count || 0;
   lastLoginText.textContent = fmtDate(u.last_login_at);
@@ -110,7 +110,7 @@ async function loadSummary() {
     totalProductsSold.textContent = Number(s.total_products_sold || 0);
     totalAllSalesValue.textContent = Number(s.total_sales_value || 0).toFixed(2);
   } catch (err) {
-    console.warn('Could not load staff summary', err);
+    console.warn('Could not load merchandiser summary', err);
   }
 }
 

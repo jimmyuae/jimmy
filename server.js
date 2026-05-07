@@ -484,7 +484,7 @@ function buildMonthDateList(start, end) {
 
 async function generateWorkerMonthlyReport(workerId, month, year, throughDate = null) {
   const worker = await one('SELECT * FROM users WHERE id=$1', [workerId]);
-  if (!worker) throw new Error('Staff member not found.');
+  if (!worker) throw new Error('Merchandiser not found.');
 
   const start = dayjs(`${year}-${String(month).padStart(2,'0')}-01`).startOf('month');
   const monthEnd = start.endOf('month');
@@ -613,7 +613,7 @@ app.post('/api/auth/signup', async (req,res)=>{
   }
 });
 
-app.post('/api/auth/login', async (req,res)=>{ try { const {identifier,email,password}=req.body||{}; const loginId=String(identifier||email||'').trim(); if(!loginId||!password) return res.status(400).json({error:'Staff/Admin ID and password are required.'}); const user = await one('SELECT * FROM users WHERE lower(email)=lower($1) OR lower(employee_code)=lower($1) LIMIT 1', [loginId]); if(!user || !bcrypt.compareSync(password, user.password_hash)) return res.status(401).json({error:'Invalid login details.'}); const approval = user.approval_status || 'approved'; if(approval === 'pending') return res.status(403).json({error:'Your account is pending admin approval.'}); if(approval === 'declined') return res.status(403).json({error:'Your account request was declined. Please contact Admin.'}); if(!Number(user.active)) return res.status(403).json({error:'This account is inactive.'}); await recordLoginEvent(user.id,'login',req); const fresh=await one('SELECT * FROM users WHERE id=$1',[user.id]); res.json({token:signToken(fresh), user: await serializeUser(fresh)}); } catch(e){ res.status(500).json({error:e.message}); }});
+app.post('/api/auth/login', async (req,res)=>{ try { const {identifier,email,password}=req.body||{}; const loginId=String(identifier||email||'').trim(); if(!loginId||!password) return res.status(400).json({error:'Merchandiser/Admin ID and password are required.'}); const user = await one('SELECT * FROM users WHERE lower(email)=lower($1) OR lower(employee_code)=lower($1) LIMIT 1', [loginId]); if(!user || !bcrypt.compareSync(password, user.password_hash)) return res.status(401).json({error:'Invalid login details.'}); const approval = user.approval_status || 'approved'; if(approval === 'pending') return res.status(403).json({error:'Your account is pending admin approval.'}); if(approval === 'declined') return res.status(403).json({error:'Your account request was declined. Please contact Admin.'}); if(!Number(user.active)) return res.status(403).json({error:'This account is inactive.'}); await recordLoginEvent(user.id,'login',req); const fresh=await one('SELECT * FROM users WHERE id=$1',[user.id]); res.json({token:signToken(fresh), user: await serializeUser(fresh)}); } catch(e){ res.status(500).json({error:e.message}); }});
 app.post('/api/auth/logout', auth, async (req,res)=>{ const loggedOutAt=await recordLoginEvent(req.user.id,'logout',req); res.json({ok:true, logged_out_at:loggedOutAt}); });
 app.get('/api/me', auth, async (req,res)=>{ const user=await one('SELECT * FROM users WHERE id=$1',[req.user.id]); res.json({user: await serializeUser(user)}); });
 app.post('/api/profile/photo', auth, async (req,res)=>{ try { const imagePath=await saveDataUrlImage(req.body.image, `profile-user-${req.user.id}`); await q('UPDATE users SET profile_image_path=$1, updated_at=$2 WHERE id=$3',[imagePath,nowIso(),req.user.id]); res.json({ok:true, profile_image_path: await signedUrl(imagePath)}); } catch(e){ res.status(400).json({error:e.message}); }});
@@ -627,7 +627,7 @@ function monthFilterSql(alias, month, year) {
 }
 
 app.get('/api/worker/summary', auth, async (req,res)=>{
-  if(req.user.role!=='worker') return res.status(403).json({error:'Only staff can view this summary.'});
+  if(req.user.role!=='worker') return res.status(403).json({error:'Only merchandisers can view this summary.'});
   const row = await one(`SELECT
     COUNT(DISTINCT (a.check_in_time::timestamptz)::date)::int AS total_working_days,
     COUNT(DISTINCT to_char(a.check_in_time::timestamptz, 'YYYY-MM'))::int AS total_working_months,
@@ -645,7 +645,7 @@ app.get('/api/worker/summary', auth, async (req,res)=>{
 });
 app.get('/api/worker/top-sellers', auth, async (req,res)=>{
   try {
-    if(req.user.role!=='worker') return res.status(403).json({error:'Only staff can view top sellers.'});
+    if(req.user.role!=='worker') return res.status(403).json({error:'Only merchandisers can view top sellers.'});
     const now = dayjs();
     const month = now.month() + 1;
     const year = now.year();
@@ -679,7 +679,7 @@ app.get('/api/worker/top-sellers', auth, async (req,res)=>{
 });
 app.get('/api/worker/sales-trend', auth, async (req,res)=>{
   try {
-    if(req.user.role!=='worker') return res.status(403).json({error:'Only staff can view sales trend.'});
+    if(req.user.role!=='worker') return res.status(403).json({error:'Only merchandisers can view sales trend.'});
     const now = dayjs();
     const previous = now.subtract(1,'month');
     const currentRow = await one(`SELECT COALESCE(SUM(total_value),0)::numeric AS total_value, COALESCE(SUM(total_qty),0)::int AS total_qty FROM daily_sales_reports WHERE worker_id=$1 AND EXTRACT(MONTH FROM report_date::date)=$2 AND EXTRACT(YEAR FROM report_date::date)=$3`, [req.user.id, now.month()+1, now.year()]);

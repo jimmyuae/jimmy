@@ -26,10 +26,10 @@
       <div class="app-splash-dots"><span></span><span></span><span></span></div>
     </div>
   </div>
-  <div class="mobile-menu"><span><img src="/assets/jimmy-logo.svg" alt="Jimmy"> Admin</span><button class="small secondary" onclick="toggleSidebar()">Menu</button></div>
+  <div class="mobile-menu"><span><img src="/assets/jimmy-logo-white.svg" alt="Jimmy"> Admin</span><button class="small secondary" onclick="toggleSidebar()">Menu</button></div>
   <div class="app-shell">
     <aside class="sidebar" id="sidebar">
-      <div class="logo"><img src="/assets/jimmy-logo.svg" alt="Jimmy"></div>
+      <div class="logo"><img src="/assets/jimmy-logo-white.svg" alt="Jimmy"></div>
       <nav class="nav">
         <a href="#overview" class="active" data-section-link>Overview</a>
         <a href="#profile" data-section-link>Profile</a>
@@ -51,7 +51,7 @@
           <div id="adminDashboardAvatar"></div>
           <div>
             <h2 id="adminDashboardName">Admin</h2>
-            <p class="muted">Staff/Admin ID: <b id="adminDashboardId">-</b></p>
+            <p class="muted">Merchandiser/Admin ID: <b id="adminDashboardId">-</b></p>
             <p class="muted">Last Login: <b id="adminLastLogin">-</b> · Last Logout: <b id="adminLastLogout">-</b></p>
           </div>
         </div>
@@ -74,7 +74,7 @@
               <div id="adminProfileAvatar"></div>
               <div>
                 <p><strong>Name:</strong> <span id="adminProfileName">-</span></p>
-                <p><strong>Staff/Admin ID:</strong> <span id="adminProfileId">-</span></p>
+                <p><strong>Merchandiser/Admin ID:</strong> <span id="adminProfileId">-</span></p>
                 <p><strong>Role:</strong> <span id="adminProfileRole">-</span></p>
               </div>
             </div>
@@ -97,7 +97,7 @@
               <div><label>Email</label><input name="email" type="email" required></div>
               <div><label>Password</label><input name="password" type="password" required></div>
               <div><label>Phone</label><input name="phone"></div>
-              <div><label>Staff/Admin ID</label><input name="employee_code" placeholder="EMP-002 or ADMIN-002"></div>
+              <div><label>Merchandiser/Admin ID</label><input name="employee_code" placeholder="EMP-002 or ADMIN-002"></div>
               <div><label>Role</label><select name="role"><option value="worker">Merchandiser</option><option value="manager">Manager</option><option value="admin">Admin</option></select></div>
               <div><label>Assigned Store</label><select name="assigned_store_id" id="workerStoreSelect"></select></div>
               <div><label>Profile Picture</label><input id="newUserProfilePhoto" type="file" accept="image/*"></div>
@@ -111,7 +111,7 @@
               <select id="userGroupFilter"><option value="">All location groups</option></select>
               <select id="userStoreFilter"><option value="">All stores</option></select>
             </div>
-            <div class="table-wrap"><table><thead><tr><th>Profile</th><th>Name</th><th>Staff/Admin ID</th><th>Email</th><th>Role</th><th>Location Group</th><th>Store</th><th>Location Warnings</th><th>Last Login</th><th>Status</th><th>Action</th></tr></thead><tbody id="usersRows"></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>Profile</th><th>Name</th><th>Merchandiser/Admin ID</th><th>Email</th><th>Role</th><th>Location Group</th><th>Store</th><th>Location Warnings</th><th>Last Login</th><th>Status</th><th>Action</th></tr></thead><tbody id="usersRows"></tbody></table></div>
           </div>
         </div>
       </section>
@@ -138,7 +138,7 @@
               <div><label>Closing Time</label><input name="closing_time" value="22:00"></div>
               <button type="submit">Add Store</button>
             </form>
-            <p class="hint">Store GPS is captured automatically from the first staff check-in. Future check-in/check-out is checked within 0.5 KM.</p>
+            <p class="hint">Store GPS is captured automatically from the first merchandiser check-in. Future check-in/check-out is checked within 0.5 KM.</p>
           </div>
           <div class="card">
             <h2>Stores</h2>

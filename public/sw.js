@@ -5,6 +5,7 @@ const STATIC_ASSETS = [
   '/js/common.js',
   '/js/chat.js',
   '/assets/jimmy-logo.svg',
+  '/assets/jimmy-logo-white.svg',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png',
   '/manifest.webmanifest'

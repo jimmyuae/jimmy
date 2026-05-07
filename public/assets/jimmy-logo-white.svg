@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 260" role="img" aria-labelledby="title desc">
+  <title id="title">JIMMY white logo</title>
+  <desc id="desc">Official style JIMMY wordmark in white for dark backgrounds.</desc>
+  <g fill="#ffffff">
+    <path d="M45 182h120c13 0 23-10 23-23V55h34v104c0 32-25 57-57 57H20v-34h25z"/>
+    <rect x="280" y="55" width="34" height="161" rx="2"/>
+    <path d="M395 216V55h31l74 75 74-75h31v161h-34V107l-71 71-71-71v109z"/>
+    <path d="M678 216V55h31l74 75 74-75h31v161h-34V107l-71 71-71-71v109z"/>
+    <path d="M946 55h42l60 65 60-65h45l-88 95v66h-34v-66z"/>
+  </g>
+</svg>
