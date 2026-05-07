@@ -1,0 +1,1 @@
+This placeholder keeps the storage folder available for GitHub upload. Do not delete the folder. Runtime files may be generated here.
