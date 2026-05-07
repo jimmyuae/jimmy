@@ -66,9 +66,8 @@ async function loadProducts() {
   products = data.products;
   salesItems.innerHTML = products.map(p => `
     <tr data-product-id="${p.id}">
-      <td>${escapeHtml(p.model)}</td>
+      <td><span class="model-name">${escapeHtml(p.model)}</span><input class="price" type="hidden" value="${Number(p.default_price || 0)}"></td>
       <td><input class="qty" type="number" min="0" value="0" oninput="recalcSales()"></td>
-      <td><input class="price" type="number" min="0" step="0.01" value="${Number(p.default_price || 0)}" oninput="recalcSales()"></td>
       <td class="amount value">0.00</td>
     </tr>
   `).join('');
@@ -187,13 +186,11 @@ function renderTrendInto(target, data) {
 async function loadSalesTrend() {
   try {
     const data = await api('/api/worker/sales-trend');
-    salesTrendHeadline.textContent = `Comparing ${data.current_month_label} with ${data.previous_month_label}.`;
-    renderTrendInto('dashboard', data);
+    profileSalesTrendHeadline.textContent = `Comparing ${data.current_month_label} with ${data.previous_month_label}.`;
     renderTrendInto('profile', data);
   } catch (err) {
     console.warn('Could not load sales trend', err);
-    salesTrendHeadline.textContent = 'Could not load sales trend right now.';
-    salesTrendSummary.textContent = 'Trend is temporarily unavailable.';
+    profileSalesTrendHeadline.textContent = 'Could not load sales trend right now.';
     profileSalesTrendSummary.textContent = 'Trend is temporarily unavailable.';
   }
 }

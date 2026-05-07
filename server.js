@@ -338,6 +338,22 @@ async function saveDataUrlImage(dataUrl, prefix) {
   await uploadBuffer(Buffer.from(matches[2], 'base64'), objectPath, `image/${ext === 'jpg' ? 'jpeg' : ext}`);
   return objectPath;
 }
+
+async function removeStorageObjects(paths) {
+  const uniquePaths = [...new Set((paths || []).filter(Boolean).map(p => String(p).trim()).filter(p => p && !/^https?:\/\//.test(p)))];
+  let removed = 0;
+  for (let i = 0; i < uniquePaths.length; i += 100) {
+    const batch = uniquePaths.slice(i, i + 100);
+    const { error } = await supabase.storage.from(SUPABASE_STORAGE_BUCKET).remove(batch);
+    if (error) {
+      console.warn('Storage delete warning:', error.message || error);
+      continue;
+    }
+    removed += batch.length;
+  }
+  return removed;
+}
+
 function manualSelfieSubmission() { return { passed: true, score: null, provider: FACE_VERIFY_MODE, review_status: 'pending', message: 'Selfie submitted for manual admin review.' }; }
 function minutesBetween(startIso, endIso) { return Math.max(0, Math.round((new Date(endIso) - new Date(startIso)) / 60000)); }
 function statusBadgeText(status) { const s=status || 'pending'; return s.charAt(0).toUpperCase()+s.slice(1); }
@@ -574,10 +590,73 @@ app.post('/api/attendance/check-in', auth, async (req,res)=>{ if(req.user.role!=
 app.post('/api/attendance/check-out', auth, async (req,res)=>{ if(req.user.role!=='worker') return res.status(403).json({error:'Only merchandisers can check out.'}); const client=await pool.connect(); try { const {latitude,longitude,accuracy,image,total_customers,converted_customers,items,no_sale_reason}=req.body||{}; const openRes=await client.query(`SELECT a.*,s.latitude AS store_lat,s.longitude AS store_lng,s.radius_m,s.name AS store_name,s.location_locked,s.location_captured_by,s.location_captured_at FROM attendance a JOIN stores s ON s.id=a.store_id WHERE a.worker_id=$1 AND a.status='open' ORDER BY a.id DESC LIMIT 1`,[req.user.id]); const open=openRes.rows[0]; if(!open) return res.status(404).json({error:'No open check-in found.'}); const store={id:open.store_id,latitude:open.store_lat,longitude:open.store_lng,radius_m:open.radius_m,location_locked:open.location_locked,location_captured_by:open.location_captured_by,location_captured_at:open.location_captured_at}; const imagePath=await saveDataUrlImage(image,`checkout-worker-${req.user.id}`); const capture=await captureStoreLocationIfNeeded(store,req.user.id,latitude,longitude); const location=calculateLocation(capture.store,latitude,longitude,accuracy); if(capture.captured){location.status='captured';location.warning=false;location.passed=true;location.distance_m=0;location.store_location_captured=true;} const face=manualSelfieSubmission(); const safeItems=Array.isArray(items)?items:[]; let totalQty=0,totalValue=0; const prepared=[]; for(const item of safeItems){ const product=(await client.query('SELECT * FROM products WHERE id=$1',[item.product_id])).rows[0]; if(!product) continue; const qty=Math.max(0,parseInt(item.quantity||0,10)); const unitPrice=Number(item.unit_price ?? product.default_price ?? 0); const value=Number((qty*unitPrice).toFixed(2)); totalQty+=qty; totalValue+=value; prepared.push({product,qty,unitPrice,value}); } const customers=Math.max(0,parseInt(total_customers||0,10)); const converted=Math.max(0,parseInt(converted_customers||0,10)); const conversionRate=customers>0?Number(((converted/customers)*100).toFixed(2)):0; const noSaleReason=String(no_sale_reason||'').trim().slice(0,1000); if(totalQty===0&&!noSaleReason) return res.status(400).json({error:'No sale reason is required when no product quantity is sold.'}); const checkoutTime=nowIso(); const workMinutes=minutesBetween(open.check_in_time,checkoutTime); await client.query('BEGIN'); await client.query(`UPDATE attendance SET check_out_time=$1,check_out_lat=$2,check_out_lng=$3,check_out_accuracy=$4,out_face_score=$5,out_location_status=$6,check_out_distance_m=$7,out_location_warning=$8,status='closed',total_work_minutes=$9,out_face_image_path=$10,out_face_review_status='pending',updated_at=$11 WHERE id=$12`,[checkoutTime,latitude,longitude,accuracy||null,face.score,location.status,location.distance_m,location.warning?1:0,workMinutes,imagePath,checkoutTime,open.id]); const report=(await client.query(`INSERT INTO daily_sales_reports (attendance_id,worker_id,store_id,report_date,total_customers,converted_customers,conversion_rate,total_qty,total_value,no_sale_reason,logout_time,submitted_at,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,[open.id,req.user.id,open.store_id,dayjs(checkoutTime).format('YYYY-MM-DD'),customers,converted,conversionRate,totalQty,totalValue,noSaleReason||null,dayjs(checkoutTime).format('HH:mm'),checkoutTime,checkoutTime,checkoutTime])).rows[0]; for(const row of prepared){ await client.query('INSERT INTO daily_sales_report_items (daily_sales_report_id,product_id,product_name_snapshot,unit_price_snapshot,quantity,value,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',[report.id,row.product.id,row.product.model,row.unitPrice,row.qty,row.value,checkoutTime,checkoutTime]); } await client.query('COMMIT'); res.json({ok:true,check_out_time:checkoutTime,total_work_minutes:workMinutes,total_qty:totalQty,total_value:totalValue,conversion_rate:conversionRate,face,location}); } catch(e){ try{await client.query('ROLLBACK')}catch{} res.status(400).json({error:e.message}); } finally { client.release(); }});
 app.get('/api/worker/reports/monthly', auth, async (req,res)=>{ const reports=await all('SELECT * FROM monthly_attendance_reports WHERE worker_id=$1 ORDER BY year DESC, month DESC',[req.user.id]); res.json({reports}); });
 
+app.get('/api/admin/work-status', auth, requireAdmin, async (req,res)=>{
+  try {
+    const working = await one(`SELECT COUNT(DISTINCT worker_id)::int AS count FROM attendance WHERE status='open'`);
+    const finished = await one(`SELECT COUNT(DISTINCT worker_id)::int AS count FROM attendance WHERE status='closed' AND (check_out_time::timestamptz)::date = CURRENT_DATE`);
+    res.json({
+      working_now: Number(working?.count || 0),
+      finished_today: Number(finished?.count || 0)
+    });
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
 app.get('/api/admin/users', auth, requireAdmin, async (req,res)=>{ const rows=await all(`SELECT u.id,u.name,u.email,u.phone,u.employee_code,u.role,u.active,u.assigned_store_id,u.profile_image_path,u.last_login_at,u.last_logout_at,s.name AS store_name,s.store_group,COALESCE(SUM(COALESCE(a.in_location_warning,0)+COALESCE(a.out_location_warning,0)),0)::int AS location_warning_count FROM users u LEFT JOIN stores s ON s.id=u.assigned_store_id LEFT JOIN attendance a ON a.worker_id=u.id GROUP BY u.id,s.name,s.store_group ORDER BY u.active DESC,u.role ASC,u.name ASC`); res.json({users: await attachSignedUsers(rows)}); });
 app.post('/api/admin/users', auth, requireAdmin, async (req,res)=>{ try { const {name,email,password,phone,employee_code,role,assigned_store_id,profile_image}=req.body||{}; if(!name||!email||!password) return res.status(400).json({error:'Name, email, and password are required.'}); const imagePath = profile_image ? await saveDataUrlImage(profile_image, `profile-user-new`) : null; const ts=nowIso(); const row=await one('INSERT INTO users (name,email,phone,employee_code,password_hash,role,active,assigned_store_id,profile_image_path,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9,$10) RETURNING id',[name,email,phone||'',employee_code||null,bcrypt.hashSync(password,10),role||'worker',assigned_store_id||null,imagePath,ts,ts]); res.json({ok:true,id:row.id}); } catch(e){ res.status(400).json({error:e.message}); }});
 app.patch('/api/admin/users/:id', auth, requireAdmin, async (req,res)=>{ try { const fields=[], params=[]; let i=1; for(const key of ['name','phone','employee_code','role','assigned_store_id','active']) if(req.body[key]!==undefined){fields.push(`${key}=$${i++}`); params.push(req.body[key]||null);} if(req.body.password){fields.push(`password_hash=$${i++}`);params.push(bcrypt.hashSync(req.body.password,10));} if(req.body.profile_image){fields.push(`profile_image_path=$${i++}`);params.push(await saveDataUrlImage(req.body.profile_image,`profile-user-${req.params.id}`));} if(!fields.length) return res.json({ok:true}); fields.push(`updated_at=$${i++}`); params.push(nowIso(), req.params.id); await q(`UPDATE users SET ${fields.join(', ')} WHERE id=$${i}`,params); res.json({ok:true}); } catch(e){ res.status(400).json({error:e.message}); }});
-app.delete('/api/admin/users/:id', auth, requireAdmin, async (req,res)=>{ if(Number(req.params.id)===Number(req.user.id)) return res.status(400).json({error:'You cannot deactivate your own account.'}); await q('UPDATE users SET active=0,updated_at=$1 WHERE id=$2',[nowIso(),req.params.id]); res.json({ok:true,message:'User deactivated. Old records are preserved.'}); });
+app.delete('/api/admin/users/:id', auth, requireAdmin, async (req,res)=>{
+  const targetId = Number(req.params.id);
+  if (!Number.isFinite(targetId)) return res.status(400).json({error:'Invalid user ID.'});
+  if (targetId === Number(req.user.id)) return res.status(400).json({error:'You cannot permanently delete your own account.'});
+
+  const client = await pool.connect();
+  let storagePaths = [];
+  try {
+    const targetRes = await client.query('SELECT * FROM users WHERE id=$1', [targetId]);
+    const target = targetRes.rows[0];
+    if (!target) return res.status(404).json({error:'User not found.'});
+
+    const storageRes = await client.query(`
+      SELECT profile_image_path AS path FROM users WHERE id=$1 AND profile_image_path IS NOT NULL
+      UNION ALL SELECT face_image_path AS path FROM users WHERE id=$1 AND face_image_path IS NOT NULL
+      UNION ALL SELECT in_face_image_path AS path FROM attendance WHERE worker_id=$1 AND in_face_image_path IS NOT NULL
+      UNION ALL SELECT out_face_image_path AS path FROM attendance WHERE worker_id=$1 AND out_face_image_path IS NOT NULL
+      UNION ALL SELECT pdf_url AS path FROM monthly_attendance_reports WHERE worker_id=$1 AND pdf_url IS NOT NULL
+    `, [targetId]);
+    storagePaths = storageRes.rows.map(r => r.path).filter(Boolean);
+
+    await client.query('BEGIN');
+
+    const attendanceIdsRes = await client.query('SELECT id FROM attendance WHERE worker_id=$1', [targetId]);
+    const attendanceIds = attendanceIdsRes.rows.map(r => r.id);
+
+    await client.query('DELETE FROM daily_sales_report_items WHERE daily_sales_report_id IN (SELECT id FROM daily_sales_reports WHERE worker_id=$1 OR attendance_id IN (SELECT id FROM attendance WHERE worker_id=$1))', [targetId]);
+    await client.query('DELETE FROM daily_sales_reports WHERE worker_id=$1 OR attendance_id IN (SELECT id FROM attendance WHERE worker_id=$1)', [targetId]);
+    await client.query('DELETE FROM attendance_correction_requests WHERE worker_id=$1 OR approved_by=$1 OR attendance_id IN (SELECT id FROM attendance WHERE worker_id=$1)', [targetId]);
+    await client.query('DELETE FROM monthly_attendance_reports WHERE worker_id=$1', [targetId]);
+    await client.query('DELETE FROM login_events WHERE user_id=$1', [targetId]);
+    await client.query('UPDATE stores SET location_captured_by=NULL, updated_at=$1 WHERE location_captured_by=$2', [nowIso(), targetId]);
+    await client.query('UPDATE attendance SET in_face_reviewed_by=NULL, in_face_reviewed_at=NULL WHERE in_face_reviewed_by=$1', [targetId]);
+    await client.query('UPDATE attendance SET out_face_reviewed_by=NULL, out_face_reviewed_at=NULL WHERE out_face_reviewed_by=$1', [targetId]);
+    await client.query('DELETE FROM attendance WHERE worker_id=$1', [targetId]);
+    await client.query('DELETE FROM users WHERE id=$1', [targetId]);
+
+    await client.query('COMMIT');
+
+    const deletedStorageObjects = await removeStorageObjects(storagePaths);
+    res.json({
+      ok:true,
+      message:'User and linked data permanently deleted.',
+      deleted_user_id: targetId,
+      deleted_attendance_records: attendanceIds.length,
+      deleted_storage_objects: deletedStorageObjects
+    });
+  } catch(e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    res.status(400).json({error:e.message});
+  } finally {
+    client.release();
+  }
+});
 app.get('/api/admin/stores', auth, requireAdmin, async (req,res)=>{ res.json({stores:await all('SELECT * FROM stores ORDER BY active DESC, store_group ASC, name ASC')}); });
 app.post('/api/admin/stores', auth, requireAdmin, async (req,res)=>{ try { const {store_group,name,code,latitude,longitude,radius_m,opening_time,closing_time}=req.body||{}; if(!name) return res.status(400).json({error:'Store name is required.'}); const safeGroup=String(store_group||'General').trim()||'General'; const safeCode=String(code||slugCode(`${safeGroup}-${name}`)).trim(); const hasLocation=latitude!==undefined&&longitude!==undefined&&String(latitude)!==''&&String(longitude)!==''; const ts=nowIso(); const row=await one('INSERT INTO stores (store_group,name,code,latitude,longitude,radius_m,location_locked,opening_time,closing_time,active,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1,$10,$11) RETURNING id',[safeGroup,name,safeCode,hasLocation?Number(latitude):0,hasLocation?Number(longitude):0,Number(radius_m||STORE_RADIUS_M),hasLocation?1:0,opening_time||'10:00',closing_time||'22:00',ts,ts]); res.json({ok:true,id:row.id}); } catch(e){ res.status(400).json({error:e.message}); }});
 app.patch('/api/admin/stores/:id', auth, requireAdmin, async (req,res)=>{ const fields=[],params=[]; let i=1; for(const key of ['store_group','name','code','latitude','longitude','radius_m','opening_time','closing_time','active','location_locked']) if(req.body[key]!==undefined){fields.push(`${key}=$${i++}`);params.push(req.body[key]);} if(!fields.length) return res.json({ok:true}); fields.push(`updated_at=$${i++}`); params.push(nowIso(),req.params.id); await q(`UPDATE stores SET ${fields.join(', ')} WHERE id=$${i}`,params); res.json({ok:true}); });

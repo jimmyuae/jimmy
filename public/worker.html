@@ -68,30 +68,6 @@
         </div>
         <div class="grid cols-2" style="margin-top:18px">
           <div class="card">
-            <h2>Top Sellers This Month</h2>
-            <p class="hint" id="topSellerMeta">Current month ranking based on total sales value.</p>
-            <div id="topSellerList" class="top-seller-list"></div>
-          </div>
-          <div class="card">
-            <h2>My Monthly Sales Trend</h2>
-            <p class="hint" id="salesTrendHeadline">Comparing this month with previous month.</p>
-            <div class="sales-comparison-chart" id="salesTrendChart">
-              <div class="sales-bar-card">
-                <div class="sales-bar-title" id="previousMonthLabel">Previous Month</div>
-                <div class="sales-bar-track"><div class="sales-bar" id="previousMonthBar" style="height:20%"></div></div>
-                <div class="sales-bar-value" id="previousMonthValue">0.00</div>
-              </div>
-              <div class="sales-bar-card current">
-                <div class="sales-bar-title" id="currentMonthLabel">This Month</div>
-                <div class="sales-bar-track"><div class="sales-bar" id="currentMonthBar" style="height:20%"></div></div>
-                <div class="sales-bar-value" id="currentMonthValue">0.00</div>
-              </div>
-            </div>
-            <div class="trend-summary" id="salesTrendSummary">No sales data yet.</div>
-          </div>
-        </div>
-        <div class="grid cols-2" style="margin-top:18px">
-          <div class="card">
             <h2>Store Selfie Submission</h2>
             <div class="single-camera-frame" id="cameraFrame">
               <video id="camera" autoplay playsinline muted></video>
@@ -121,7 +97,7 @@
             </div>
             <div class="table-wrap sales-mobile-wrap" style="margin-top:14px">
               <table class="sales-table">
-                <thead><tr><th>Model</th><th>Qty</th><th>Unit Price</th><th>Value</th></tr></thead>
+                <thead><tr><th>Model</th><th>Qty</th><th>Value</th></tr></thead>
                 <tbody id="salesItems"></tbody>
               </table>
             </div>
@@ -155,8 +131,8 @@
             </div>
           </div>
           <div class="card">
-            <h2>Sales Performance Graph</h2>
-            <p class="hint">This month compared with previous month.</p>
+            <h2>My Monthly Sales Trend</h2>
+            <p class="hint" id="profileSalesTrendHeadline">This month compared with previous month.</p>
             <div class="sales-comparison-chart compact" id="profileSalesTrendChart">
               <div class="sales-bar-card">
                 <div class="sales-bar-title" id="profilePreviousMonthLabel">Previous Month</div>
@@ -170,6 +146,11 @@
               </div>
             </div>
             <div class="trend-summary" id="profileSalesTrendSummary">No sales data yet.</div>
+          </div>
+          <div class="card">
+            <h2>Top Sellers This Month</h2>
+            <p class="hint" id="topSellerMeta">Current month ranking based on total sales value.</p>
+            <div id="topSellerList" class="top-seller-list"></div>
           </div>
           <div class="card">
             <h2>Update Profile Picture</h2>

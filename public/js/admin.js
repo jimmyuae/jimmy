@@ -49,7 +49,20 @@ async function refreshAll() {
   await loadUsers();
   await loadProducts();
   await loadAttendance();
+  await loadWorkStatus();
   await loadReports();
+}
+
+async function loadWorkStatus() {
+  try {
+    const data = await api('/api/admin/work-status');
+    statWorkingNow.textContent = Number(data.working_now || 0);
+    statFinishedToday.textContent = Number(data.finished_today || 0);
+  } catch (err) {
+    console.warn('Could not load admin work status totals', err);
+    statWorkingNow.textContent = '0';
+    statFinishedToday.textContent = '0';
+  }
 }
 
 async function loadUsers() {
@@ -289,10 +302,23 @@ async function disableProduct(id) {
   } catch (err) { alert(err.message); }
 }
 async function deactivateUser(id) {
-  if (!confirm('Remove/deactivate this user? Old attendance and report history will stay preserved.')) return;
+  const user = usersCache.find(u => Number(u.id) === Number(id));
+  const name = user ? `${user.name} (${user.employee_code || user.email})` : 'this user';
+  const typed = prompt(`This will permanently delete ${name} and all linked data.
+
+To continue, please write exactly: Confirm`);
+  if (typed === null) return;
+  if (typed.trim() !== 'Confirm') {
+    alert('Delete cancelled. You must write exactly Confirm to delete the user.');
+    return;
+  }
   try {
-    await api(`/api/admin/users/${id}`, { method: 'DELETE' });
+    const result = await api(`/api/admin/users/${id}`, { method: 'DELETE' });
+    alert(result.message || 'User permanently deleted.');
     await loadUsers();
+    await loadAttendance();
+    await loadWorkStatus();
+    await loadReports();
   } catch (err) { alert(err.message); }
 }
 async function deactivateStore(id) {
