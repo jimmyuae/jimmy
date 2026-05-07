@@ -42,7 +42,7 @@
     <main class="content">
       <div class="topbar">
         <div><h1>Staff Dashboard</h1><p id="welcomeText">Loading profile...</p></div>
-        <span class="badge" id="faceBadge">Manual selfie review</span>
+        <span class="badge" id="faceBadge" style="display:none"></span>
       </div>
 
       <section id="dashboard" class="section active">
@@ -54,6 +54,12 @@
             <p class="muted">Last Login: <b id="lastLoginText">-</b> · Last Logout: <b id="lastLogoutText">-</b></p>
           </div>
         </div>
+        <div class="grid cols-4 staff-summary-grid" style="margin-top:18px">
+          <div class="stat"><span class="muted">Total Working Days</span><b id="totalWorkingDays">0</b></div>
+          <div class="stat"><span class="muted">Total Working Months</span><b id="totalWorkingMonths">0</b></div>
+          <div class="stat"><span class="muted">Products Sold</span><b id="totalProductsSold">0</b></div>
+          <div class="stat"><span class="muted">Total Sales Value</span><b id="totalAllSalesValue">0.00</b></div>
+        </div>
         <div class="grid cols-4" style="margin-top:18px">
           <div class="stat"><span class="muted">Current Status</span><b id="currentStatus">Checking...</b></div>
           <div class="stat"><span class="muted">Location</span><b id="locationStatus">Not checked</b></div>
@@ -62,14 +68,40 @@
         </div>
         <div class="grid cols-2" style="margin-top:18px">
           <div class="card">
+            <h2>Top Sellers This Month</h2>
+            <p class="hint" id="topSellerMeta">Current month ranking based on total sales value.</p>
+            <div id="topSellerList" class="top-seller-list"></div>
+          </div>
+          <div class="card">
+            <h2>My Monthly Sales Trend</h2>
+            <p class="hint" id="salesTrendHeadline">Comparing this month with previous month.</p>
+            <div class="sales-comparison-chart" id="salesTrendChart">
+              <div class="sales-bar-card">
+                <div class="sales-bar-title" id="previousMonthLabel">Previous Month</div>
+                <div class="sales-bar-track"><div class="sales-bar" id="previousMonthBar" style="height:20%"></div></div>
+                <div class="sales-bar-value" id="previousMonthValue">0.00</div>
+              </div>
+              <div class="sales-bar-card current">
+                <div class="sales-bar-title" id="currentMonthLabel">This Month</div>
+                <div class="sales-bar-track"><div class="sales-bar" id="currentMonthBar" style="height:20%"></div></div>
+                <div class="sales-bar-value" id="currentMonthValue">0.00</div>
+              </div>
+            </div>
+            <div class="trend-summary" id="salesTrendSummary">No sales data yet.</div>
+          </div>
+        </div>
+        <div class="grid cols-2" style="margin-top:18px">
+          <div class="card">
             <h2>Store Selfie Submission</h2>
-            <div class="camera-box">
+            <div class="single-camera-frame" id="cameraFrame">
               <video id="camera" autoplay playsinline muted></video>
               <canvas id="snapshot" width="640" height="480"></canvas>
+              <div class="camera-placeholder" id="cameraPlaceholder">Camera preview will appear here</div>
             </div>
-            <div class="toolbar" style="margin-top:14px">
+            <div class="toolbar camera-actions" style="margin-top:14px">
               <button class="secondary" onclick="startCamera()">Start Camera</button>
               <button class="secondary" onclick="captureSnapshot()">Capture Store Selfie</button>
+              <button class="secondary" onclick="retakeSnapshot()">Retake</button>
             </div>
             <p class="hint">Capture a clear selfie with the store background visible.</p>
           </div>
@@ -87,8 +119,8 @@
               <div><label>Total Customer</label><input id="totalCustomers" type="number" min="0" value="0"></div>
               <div><label>Converted</label><input id="convertedCustomers" type="number" min="0" value="0"></div>
             </div>
-            <div class="table-wrap" style="margin-top:14px">
-              <table>
+            <div class="table-wrap sales-mobile-wrap" style="margin-top:14px">
+              <table class="sales-table">
                 <thead><tr><th>Model</th><th>Qty</th><th>Unit Price</th><th>Value</th></tr></thead>
                 <tbody id="salesItems"></tbody>
               </table>
@@ -117,6 +149,27 @@
                 <p><strong>Location Warnings:</strong> <span id="profileWarnings">0</span></p>
               </div>
             </div>
+            <div class="mini-insight-card" style="margin-top:14px">
+              <div class="mini-insight-label">Current selling position</div>
+              <div class="mini-insight-value" id="profileRankText">Top seller ranking will appear here.</div>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Sales Performance Graph</h2>
+            <p class="hint">This month compared with previous month.</p>
+            <div class="sales-comparison-chart compact" id="profileSalesTrendChart">
+              <div class="sales-bar-card">
+                <div class="sales-bar-title" id="profilePreviousMonthLabel">Previous Month</div>
+                <div class="sales-bar-track"><div class="sales-bar" id="profilePreviousMonthBar" style="height:20%"></div></div>
+                <div class="sales-bar-value" id="profilePreviousMonthValue">0.00</div>
+              </div>
+              <div class="sales-bar-card current">
+                <div class="sales-bar-title" id="profileCurrentMonthLabel">This Month</div>
+                <div class="sales-bar-track"><div class="sales-bar" id="profileCurrentMonthBar" style="height:20%"></div></div>
+                <div class="sales-bar-value" id="profileCurrentMonthValue">0.00</div>
+              </div>
+            </div>
+            <div class="trend-summary" id="profileSalesTrendSummary">No sales data yet.</div>
           </div>
           <div class="card">
             <h2>Update Profile Picture</h2>
@@ -137,7 +190,12 @@
       <section id="reports" class="section">
         <div class="card">
           <h2>My Monthly PDF Reports</h2>
-          <div class="table-wrap"><table><thead><tr><th>Report ID</th><th>Month</th><th>Present</th><th>Absent</th><th>Total Hours</th><th>Sales Value</th><th>Location Warnings</th><th>Download</th></tr></thead><tbody id="reportRows"></tbody></table></div>
+          <p class="hint">Generate a month-to-date attendance report. Example: if today is 10 May, the PDF will include 1 May to 10 May only.</p>
+          <div class="toolbar" style="margin-bottom:14px">
+            <button onclick="generateMyReport()">Generate Current Month Report</button>
+            <button class="secondary" onclick="loadReports()">Refresh Reports</button>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>Report ID</th><th>Month</th><th>Present</th><th>No Record</th><th>Total Hours</th><th>Products Sold</th><th>Sales Value</th><th>Location Warnings</th><th>Download</th></tr></thead><tbody id="reportRows"></tbody></table></div>
         </div>
       </section>
       <footer>Jimmy Attendance System. Developer: <a href="https://www.kestford.com" target="_blank">www.kestford.com</a></footer>

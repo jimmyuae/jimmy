@@ -1,11 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 260" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 120" role="img" aria-labelledby="title desc">
   <title id="title">Jimmy logo</title>
-  <desc id="desc">Stylized Jimmy wordmark in blue.</desc>
-  <g fill="#0c47a5">
-    <path d="M45 182h120c13 0 23-10 23-23V55h34v104c0 32-25 57-57 57H20v-34h25z"/>
-    <rect x="280" y="55" width="34" height="161" rx="2"/>
-    <path d="M395 216V55h31l74 75 74-75h31v161h-34V107l-71 71-71-71v109z"/>
-    <path d="M678 216V55h31l74 75 74-75h31v161h-34V107l-71 71-71-71v109z"/>
-    <path d="M946 55h42l60 65 60-65h45l-88 95v66h-34v-66z"/>
+  <desc id="desc">Rounded white Jimmy wordmark with blue lettering for the header.</desc>
+  <defs>
+    <linearGradient id="jimmyBorder" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#dce8ff"/>
+      <stop offset="100%" stop-color="#9fc0ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0c47a5" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="6" y="10" width="448" height="100" rx="28" fill="#ffffff" stroke="url(#jimmyBorder)" stroke-width="4"/>
   </g>
+  <rect x="20" y="24" width="420" height="72" rx="22" fill="#ffffff" opacity="0.92"/>
+  <text x="230" y="76" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="900" letter-spacing="4" fill="#0b3f94">JIMMY</text>
+  <path d="M52 88c22 10 46 15 72 15h214" fill="none" stroke="#54a6ff" stroke-width="7" stroke-linecap="round" opacity="0.95"/>
 </svg>

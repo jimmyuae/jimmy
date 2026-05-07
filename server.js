@@ -355,49 +355,120 @@ async function attachSignedUsers(rows) {
   return Promise.all(rows.map(async u => ({ ...u, profile_image_path: await signedUrl(u.profile_image_path), location_warning_count: Number(u.location_warning_count || 0) })));
 }
 
-async function generateWorkerMonthlyReport(workerId, month, year) {
+function reportDateLabel(dateValue) { return dayjs(dateValue).format('DD-MMM-YY'); }
+function reportTimeLabel(dateValue) { return dateValue ? dayjs(dateValue).format('h:mm A') : 'No Record'; }
+function reportDayLabel(dateValue) { return dayjs(dateValue).format('ddd'); }
+function buildMonthDateList(start, end) {
+  const days = [];
+  let cursor = start.startOf('day');
+  const finalDay = end.startOf('day');
+  while (cursor.isBefore(finalDay) || cursor.isSame(finalDay)) {
+    days.push(cursor);
+    cursor = cursor.add(1, 'day');
+  }
+  return days;
+}
+
+async function generateWorkerMonthlyReport(workerId, month, year, throughDate = null) {
   const worker = await one('SELECT * FROM users WHERE id=$1', [workerId]);
-  if (!worker) throw new Error('Merchandiser not found.');
+  if (!worker) throw new Error('Staff member not found.');
+
   const start = dayjs(`${year}-${String(month).padStart(2,'0')}-01`).startOf('month');
-  const end = start.endOf('month');
+  const monthEnd = start.endOf('month');
+  const requestedEnd = throughDate ? dayjs(throughDate).endOf('day') : dayjs().endOf('day');
+  let end = requestedEnd.isAfter(monthEnd) ? monthEnd : requestedEnd;
+  if (end.isBefore(start)) end = monthEnd;
+
   const rows = await all(`
     SELECT a.*, s.name AS store_name, s.store_group, s.opening_time, s.closing_time, ds.total_customers, ds.converted_customers, ds.total_qty, ds.total_value, ds.conversion_rate, ds.no_sale_reason
     FROM attendance a JOIN stores s ON s.id=a.store_id LEFT JOIN daily_sales_reports ds ON ds.attendance_id=a.id
     WHERE a.worker_id=$1 AND a.check_in_time >= $2 AND a.check_in_time <= $3 ORDER BY a.check_in_time ASC`, [workerId, start.toISOString(), end.toISOString()]);
+
+  const dayRows = new Map();
+  for (const r of rows) {
+    const key = dayjs(r.check_in_time).format('YYYY-MM-DD');
+    if (!dayRows.has(key)) dayRows.set(key, r);
+  }
+
   const presentDates = new Set(rows.map(r => dayjs(r.check_in_time).format('YYYY-MM-DD')));
-  const presentDays = presentDates.size, scheduledDays = daysInMonth(Number(year), Number(month)), absentDays = Math.max(0, scheduledDays-presentDays);
-  const lateCount = rows.filter(r=>isLate(r.check_in_time, r.opening_time)).length;
-  const earlyCount = rows.filter(r=>isEarlyCheckout(r.check_out_time, r.closing_time)).length;
+  const presentDays = presentDates.size;
+  const scheduledDays = buildMonthDateList(start, end).length;
+  const absentDays = Math.max(0, scheduledDays - presentDays);
+  const lateCount = rows.filter(r => isLate(r.check_in_time, r.opening_time)).length;
+  const earlyCount = rows.filter(r => isEarlyCheckout(r.check_out_time, r.closing_time)).length;
   const totalWorkMinutes = rows.reduce((s,r)=>s+Number(r.total_work_minutes||0),0);
   const overtimeMinutes = Math.max(0, totalWorkMinutes - presentDays*8*60);
   const totalSalesQty = rows.reduce((s,r)=>s+Number(r.total_qty||0),0);
   const totalSalesValue = rows.reduce((s,r)=>s+Number(r.total_value||0),0);
   const locationWarningCount = rows.reduce((s,r)=>s+Number(r.in_location_warning||0)+Number(r.out_location_warning||0),0);
-  const reportId = `ATT-${year}-${String(month).padStart(2,'0')}-${String(workerId).padStart(5,'0')}`;
+  const reportId = `ATT-${year}-${String(month).padStart(2,'0')}-${String(end.date()).padStart(2,'0')}-${String(workerId).padStart(5,'0')}`;
   const verifyUrl = `${APP_URL}/verify-report/${reportId}`;
+  const periodText = `${start.format('MMMM YYYY')} (${reportDateLabel(start)} to ${reportDateLabel(end)})`;
+  const allDays = buildMonthDateList(start, end);
 
   const pdfBuffer = await pdfBufferFromDoc(doc => {
-    try { doc.image(LOGO_PATH, 38, 24, { width: 135 }); } catch {}
-    doc.fontSize(18).text('Jimmy', 200, 38, { align: 'right' });
-    doc.fontSize(15).text('Monthly Attendance Verification Report', 38, 105, { align: 'center' });
-    doc.moveDown(1.3).fontSize(9).fillColor('#444').text(`Report ID: ${reportId}`);
-    doc.text(`Report Month: ${start.format('MMMM YYYY')}`); doc.text(`Generated Date: ${dayjs().format('DD MMMM YYYY, hh:mm A')}`); doc.text(`Verification URL: ${verifyUrl}`); doc.moveDown();
-    doc.fillColor('#000').fontSize(11).text('Merchandiser Details', { underline: true }); doc.moveDown(0.3);
-    doc.fontSize(9).text(`Merchandiser Name: ${worker.name}`); doc.text(`Merchandiser ID: ${worker.employee_code || worker.id}`); doc.text(`Email: ${worker.email}`); doc.moveDown();
-    doc.fontSize(11).text('Monthly Summary', { underline: true }); doc.moveDown(0.3);
-    [['Scheduled Days',scheduledDays],['Present Days',presentDays],['Absent Days',absentDays],['Late Check-ins',lateCount],['Early Check-outs',earlyCount],['Total Working Hours',formatMinutes(totalWorkMinutes)],['Overtime',formatMinutes(overtimeMinutes)],['Total Sales Quantity',totalSalesQty],['Total Sales Value',totalSalesValue.toFixed(2)],['Location Warnings',locationWarningCount]].forEach(([k,v])=>doc.fontSize(9).text(`${k}: ${v}`));
-    doc.moveDown().fontSize(11).text('Detailed Attendance', { underline:true }); doc.moveDown(0.4);
-    const headerY=doc.y; ['Date','Store','Check In','Check Out','Hours','Selfie','Location','Sales'].forEach((h,i)=>doc.fontSize(8).text(h,[38,103,203,268,333,388,438,496][i],headerY,{width:[65,100,65,65,55,50,58,58][i]})); doc.moveTo(38,headerY+13).lineTo(555,headerY+13).stroke(); doc.y=headerY+18;
-    rows.forEach(r=>{ if(doc.y>735){doc.addPage(); doc.fontSize(11).text('Detailed Attendance Continued',{underline:true}); doc.moveDown(0.5);} const y=doc.y; doc.fontSize(7.5).text(dayjs(r.check_in_time).format('DD MMM'),38,y,{width:65}); doc.text(`${r.store_group ? `${r.store_group} / ` : ''}${r.store_name || ''}`,103,y,{width:100}); doc.text(dayjs(r.check_in_time).format('hh:mm A'),203,y,{width:65}); doc.text(r.check_out_time?dayjs(r.check_out_time).format('hh:mm A'):'-',268,y,{width:65}); doc.text(formatMinutes(r.total_work_minutes||0),333,y,{width:55}); doc.text(`${statusBadgeText(r.in_face_review_status)} / ${r.out_face_review_status?statusBadgeText(r.out_face_review_status):'-'}`,388,y,{width:50}); doc.text(`${r.in_location_status||'-'} / ${r.out_location_status||'-'}${(Number(r.in_location_warning||0)+Number(r.out_location_warning||0))?' *':''}`,438,y,{width:58}); const saleText=Number(r.total_qty||0)===0&&r.no_sale_reason?`No sale: ${String(r.no_sale_reason).slice(0,38)}`:`${Number(r.total_qty||0)} / ${Number(r.total_value||0).toFixed(2)}`; doc.text(saleText,496,y,{width:58}); doc.y=y+17; });
-    doc.fontSize(8).fillColor('#444').text('This report was generated automatically by the Jimmy attendance system. Developer: www.kestford.com', 38, 765, { width: 520, align: 'center' });
+    try { doc.image(LOGO_PATH, 38, 22, { width: 135 }); } catch {}
+    doc.fontSize(18).fillColor('#111827').text('Attendance Sheet', 38, 74, { align: 'center' });
+    doc.fontSize(10).fillColor('#111827').text(`Employee: ${worker.name} | Brand: Jimmy | Period: ${periodText}`, 38, 104, { align: 'center' });
+    doc.fontSize(9).fillColor('#374151').text(`Prepared: ${reportDateLabel(dayjs())}`, 38, 121, { align: 'center' });
+
+    const cols = [38, 66, 130, 176, 318, 380, 445];
+    const widths = [28, 64, 46, 142, 62, 65, 82];
+    let y = 154;
+    const drawHeader = () => {
+      doc.rect(38, y, 515, 22).fillAndStroke('#f3f6fb', '#d8e0ee');
+      doc.fillColor('#111827').fontSize(8).font('Helvetica-Bold');
+      ['S.N','Date','Day','Name','Time In','Time Out','Signature'].forEach((h,i)=>doc.text(h, cols[i]+4, y+7, { width: widths[i]-6 }));
+      doc.font('Helvetica');
+      y += 22;
+    };
+    drawHeader();
+    allDays.forEach((d, idx) => {
+      if (y > 730) { doc.addPage(); y = 48; drawHeader(); }
+      const key = d.format('YYYY-MM-DD');
+      const r = dayRows.get(key);
+      const isPresent = Boolean(r);
+      const rowHeight = 22;
+      doc.rect(38, y, 515, rowHeight).stroke('#e5e7eb');
+      doc.fillColor('#111827').fontSize(8);
+      const values = [
+        String(idx + 1),
+        reportDateLabel(d),
+        reportDayLabel(d),
+        worker.name,
+        isPresent ? reportTimeLabel(r.check_in_time) : 'No Record',
+        isPresent && r.check_out_time ? reportTimeLabel(r.check_out_time) : (isPresent ? 'Pending' : 'No Record'),
+        ''
+      ];
+      values.forEach((v,i)=>doc.text(String(v), cols[i]+4, y+7, { width: widths[i]-6 }));
+      y += rowHeight;
+    });
+
+    y += 12;
+    if (y > 690) { doc.addPage(); y = 48; }
+    doc.fontSize(9).fillColor('#111827').font('Helvetica-Bold').text('Summary', 38, y);
+    doc.font('Helvetica');
+    y += 16;
+    const summary = [
+      `Working Days: ${presentDays}`,
+      `No Record Days: ${absentDays}`,
+      `Total Hours: ${formatMinutes(totalWorkMinutes)}`,
+      `Total Products Sold: ${totalSalesQty}`,
+      `Total Sales Value: ${Number(totalSalesValue || 0).toFixed(2)}`,
+      `Location Warnings: ${locationWarningCount}`,
+      `Verification URL: ${verifyUrl}`
+    ];
+    summary.forEach(line => { doc.fontSize(8).fillColor('#374151').text(line, 38, y, { width: 515 }); y += 12; });
+    doc.fontSize(8).fillColor('#444').text('Prepared on ' + reportDateLabel(dayjs()) + '   Checked by ____________________', 38, 765, { width: 520, align: 'center' });
   });
+
   const pdfHash = hashBuffer(pdfBuffer);
   const pdfPath = `reports/${reportId}.pdf`;
   await uploadBuffer(pdfBuffer, pdfPath, 'application/pdf');
   const ts = nowIso();
   const saved = await one(`INSERT INTO monthly_attendance_reports (report_id,worker_id,month,year,total_present_days,total_absent_days,late_count,early_checkout_count,total_work_minutes,overtime_minutes,total_sales_qty,total_sales_value,location_warning_count,pdf_url,pdf_hash,status,generated_at,locked_at,created_at,updated_at)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'locked',$16,$17,$18,$19)
-    ON CONFLICT(worker_id,month,year) DO UPDATE SET total_present_days=EXCLUDED.total_present_days,total_absent_days=EXCLUDED.total_absent_days,late_count=EXCLUDED.late_count,early_checkout_count=EXCLUDED.early_checkout_count,total_work_minutes=EXCLUDED.total_work_minutes,overtime_minutes=EXCLUDED.overtime_minutes,total_sales_qty=EXCLUDED.total_sales_qty,total_sales_value=EXCLUDED.total_sales_value,location_warning_count=EXCLUDED.location_warning_count,pdf_url=EXCLUDED.pdf_url,pdf_hash=EXCLUDED.pdf_hash,status='locked',generated_at=EXCLUDED.generated_at,locked_at=EXCLUDED.locked_at,updated_at=EXCLUDED.updated_at RETURNING *`, [reportId,workerId,month,year,presentDays,absentDays,lateCount,earlyCount,totalWorkMinutes,overtimeMinutes,totalSalesQty,totalSalesValue,locationWarningCount,pdfPath,pdfHash,ts,ts,ts,ts]);
+    ON CONFLICT(worker_id,month,year) DO UPDATE SET report_id=EXCLUDED.report_id,total_present_days=EXCLUDED.total_present_days,total_absent_days=EXCLUDED.total_absent_days,late_count=EXCLUDED.late_count,early_checkout_count=EXCLUDED.early_checkout_count,total_work_minutes=EXCLUDED.total_work_minutes,overtime_minutes=EXCLUDED.overtime_minutes,total_sales_qty=EXCLUDED.total_sales_qty,total_sales_value=EXCLUDED.total_sales_value,location_warning_count=EXCLUDED.location_warning_count,pdf_url=EXCLUDED.pdf_url,pdf_hash=EXCLUDED.pdf_hash,status='locked',generated_at=EXCLUDED.generated_at,locked_at=EXCLUDED.locked_at,updated_at=EXCLUDED.updated_at RETURNING *`, [reportId,workerId,month,year,presentDays,absentDays,lateCount,earlyCount,totalWorkMinutes,overtimeMinutes,totalSalesQty,totalSalesValue,locationWarningCount,pdfPath,pdfHash,ts,ts,ts,ts]);
   return saved;
 }
 async function generateMonthlyReports(month, year, workerId=null) { const workers = workerId ? await all("SELECT * FROM users WHERE id=$1 AND role='worker'", [workerId]) : await all("SELECT * FROM users WHERE role='worker' AND active=1"); const reports=[]; for (const w of workers) reports.push(await generateWorkerMonthlyReport(w.id, Number(month), Number(year))); return reports; }
@@ -411,6 +482,94 @@ app.get('/api/stores', auth, async (req,res)=>{ const stores = req.user.role==='
 
 app.get('/api/worker/attendance/open', auth, async (req,res)=>{ const open=await one('SELECT a.*,s.name AS store_name FROM attendance a JOIN stores s ON s.id=a.store_id WHERE a.worker_id=$1 AND a.status=$2 ORDER BY a.id DESC LIMIT 1',[req.user.id,'open']); res.json({attendance:open||null}); });
 app.get('/api/worker/attendance', auth, async (req,res)=>{ const rows=await all(`SELECT a.*,s.name AS store_name,s.store_group,ds.total_customers,ds.converted_customers,ds.total_qty,ds.total_value,ds.no_sale_reason FROM attendance a JOIN stores s ON s.id=a.store_id LEFT JOIN daily_sales_reports ds ON ds.attendance_id=a.id WHERE a.worker_id=$1 ORDER BY a.check_in_time DESC LIMIT 80`,[req.user.id]); res.json({attendance: await attachSignedAttendance(rows)}); });
+function monthFilterSql(alias, month, year) {
+  return `EXTRACT(MONTH FROM ${alias}::date) = ${Number(month)} AND EXTRACT(YEAR FROM ${alias}::date) = ${Number(year)}`;
+}
+
+app.get('/api/worker/summary', auth, async (req,res)=>{
+  if(req.user.role!=='worker') return res.status(403).json({error:'Only staff can view this summary.'});
+  const row = await one(`SELECT
+    COUNT(DISTINCT (a.check_in_time::timestamptz)::date)::int AS total_working_days,
+    COUNT(DISTINCT to_char(a.check_in_time::timestamptz, 'YYYY-MM'))::int AS total_working_months,
+    COALESCE(SUM(ds.total_qty),0)::int AS total_products_sold,
+    COALESCE(SUM(ds.total_value),0)::numeric AS total_sales_value
+    FROM attendance a
+    LEFT JOIN daily_sales_reports ds ON ds.attendance_id=a.id
+    WHERE a.worker_id=$1`, [req.user.id]);
+  res.json({summary:{
+    total_working_days:Number(row?.total_working_days||0),
+    total_working_months:Number(row?.total_working_months||0),
+    total_products_sold:Number(row?.total_products_sold||0),
+    total_sales_value:Number(row?.total_sales_value||0)
+  }});
+});
+app.get('/api/worker/top-sellers', auth, async (req,res)=>{
+  try {
+    if(req.user.role!=='worker') return res.status(403).json({error:'Only staff can view top sellers.'});
+    const now = dayjs();
+    const month = now.month() + 1;
+    const year = now.year();
+    const monthLabel = now.format('MMMM YYYY');
+    const ranked = await all(`WITH ranked AS (
+      SELECT u.id,u.name,u.employee_code,
+        COALESCE(SUM(ds.total_qty),0)::int AS total_qty,
+        COALESCE(SUM(ds.total_value),0)::numeric AS total_value,
+        COUNT(DISTINCT ds.report_date::date)::int AS active_days,
+        ROW_NUMBER() OVER (ORDER BY COALESCE(SUM(ds.total_value),0) DESC, COALESCE(SUM(ds.total_qty),0) DESC, lower(u.name) ASC) AS rank
+      FROM users u
+      LEFT JOIN daily_sales_reports ds ON ds.worker_id=u.id
+        AND EXTRACT(MONTH FROM ds.report_date::date)=$1
+        AND EXTRACT(YEAR FROM ds.report_date::date)=$2
+      WHERE u.role='worker' AND u.active=1
+      GROUP BY u.id,u.name,u.employee_code
+    )
+    SELECT * FROM ranked ORDER BY rank ASC`, [month, year]);
+    const rankings = ranked.filter(r => Number(r.total_qty || 0) > 0 || Number(r.total_value || 0) > 0 || Number(r.active_days || 0) > 0).slice(0,10).map(r => ({
+      rank:Number(r.rank), id:Number(r.id), name:r.name, employee_code:r.employee_code, total_qty:Number(r.total_qty||0), total_value:Number(r.total_value||0), active_days:Number(r.active_days||0), is_me:Number(r.id)===Number(req.user.id)
+    }));
+    const myRankRow = ranked.find(r => Number(r.id)===Number(req.user.id));
+    const my_rank = myRankRow && (Number(myRankRow.total_qty || 0) > 0 || Number(myRankRow.total_value || 0) > 0 || Number(myRankRow.active_days || 0) > 0) ? {
+      rank:Number(myRankRow.rank),
+      total_qty:Number(myRankRow.total_qty||0),
+      total_value:Number(myRankRow.total_value||0),
+      active_days:Number(myRankRow.active_days||0)
+    } : null;
+    res.json({month:month, year:year, month_label:monthLabel, rankings, my_rank});
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+app.get('/api/worker/sales-trend', auth, async (req,res)=>{
+  try {
+    if(req.user.role!=='worker') return res.status(403).json({error:'Only staff can view sales trend.'});
+    const now = dayjs();
+    const previous = now.subtract(1,'month');
+    const currentRow = await one(`SELECT COALESCE(SUM(total_value),0)::numeric AS total_value, COALESCE(SUM(total_qty),0)::int AS total_qty FROM daily_sales_reports WHERE worker_id=$1 AND EXTRACT(MONTH FROM report_date::date)=$2 AND EXTRACT(YEAR FROM report_date::date)=$3`, [req.user.id, now.month()+1, now.year()]);
+    const previousRow = await one(`SELECT COALESCE(SUM(total_value),0)::numeric AS total_value, COALESCE(SUM(total_qty),0)::int AS total_qty FROM daily_sales_reports WHERE worker_id=$1 AND EXTRACT(MONTH FROM report_date::date)=$2 AND EXTRACT(YEAR FROM report_date::date)=$3`, [req.user.id, previous.month()+1, previous.year()]);
+    const currentTotal = Number(currentRow?.total_value || 0);
+    const previousTotal = Number(previousRow?.total_value || 0);
+    res.json({
+      current_month_label: now.format('MMMM YYYY'),
+      previous_month_label: previous.format('MMMM YYYY'),
+      current_month_total: currentTotal,
+      previous_month_total: previousTotal,
+      current_month_qty: Number(currentRow?.total_qty || 0),
+      previous_month_qty: Number(previousRow?.total_qty || 0),
+      difference: currentTotal - previousTotal,
+      direction: currentTotal > previousTotal ? 'higher' : currentTotal < previousTotal ? 'lower' : 'equal'
+    });
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+app.post('/api/worker/reports/monthly/generate', auth, async (req,res)=>{
+  try{
+    if(req.user.role!=='worker') return res.status(403).json({error:'Only staff can generate their own report.'});
+    const now = dayjs();
+    const month = Number(req.body?.month || now.month()+1);
+    const year = Number(req.body?.year || now.year());
+    if(!month||!year||month<1||month>12) return res.status(400).json({error:'Valid month and year are required.'});
+    const report = await generateWorkerMonthlyReport(req.user.id, month, year, req.body?.through_date || now.toISOString());
+    res.json({ok:true, report});
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
 app.post('/api/attendance/check-in', auth, async (req,res)=>{ if(req.user.role!=='worker') return res.status(403).json({error:'Only merchandisers can check in.'}); try { const {store_id,latitude,longitude,accuracy,image}=req.body||{}; const open=await one("SELECT id FROM attendance WHERE worker_id=$1 AND status='open'",[req.user.id]); if(open) return res.status(409).json({error:'You already have an open check-in. Please check out first.'}); const store=await one('SELECT * FROM stores WHERE id=$1 AND active=1',[store_id]); if(!store) return res.status(400).json({error:'Invalid store.'}); if(req.user.assigned_store_id && Number(req.user.assigned_store_id)!==Number(store.id)) return res.status(403).json({error:'This merchandiser is not assigned to the selected store.'}); const imagePath=await saveDataUrlImage(image,`checkin-worker-${req.user.id}`); const capture=await captureStoreLocationIfNeeded(store,req.user.id,latitude,longitude); const location=calculateLocation(capture.store,latitude,longitude,accuracy); if(capture.captured){ location.status='captured'; location.warning=false; location.passed=true; location.distance_m=0; location.store_location_captured=true; } const face=manualSelfieSubmission(); const ts=nowIso(); const row=await one(`INSERT INTO attendance (worker_id,store_id,check_in_time,check_in_lat,check_in_lng,check_in_accuracy,in_face_score,in_location_status,check_in_distance_m,in_location_warning,status,in_face_image_path,in_face_review_status,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'open',$11,'pending',$12,$13) RETURNING id`,[req.user.id,store.id,ts,latitude,longitude,accuracy||null,face.score,location.status,location.distance_m,location.warning?1:0,imagePath,ts,ts]); res.json({ok:true, attendance_id:row.id, check_in_time:ts, face, location}); } catch(e){ res.status(400).json({error:e.message}); }});
 app.post('/api/attendance/check-out', auth, async (req,res)=>{ if(req.user.role!=='worker') return res.status(403).json({error:'Only merchandisers can check out.'}); const client=await pool.connect(); try { const {latitude,longitude,accuracy,image,total_customers,converted_customers,items,no_sale_reason}=req.body||{}; const openRes=await client.query(`SELECT a.*,s.latitude AS store_lat,s.longitude AS store_lng,s.radius_m,s.name AS store_name,s.location_locked,s.location_captured_by,s.location_captured_at FROM attendance a JOIN stores s ON s.id=a.store_id WHERE a.worker_id=$1 AND a.status='open' ORDER BY a.id DESC LIMIT 1`,[req.user.id]); const open=openRes.rows[0]; if(!open) return res.status(404).json({error:'No open check-in found.'}); const store={id:open.store_id,latitude:open.store_lat,longitude:open.store_lng,radius_m:open.radius_m,location_locked:open.location_locked,location_captured_by:open.location_captured_by,location_captured_at:open.location_captured_at}; const imagePath=await saveDataUrlImage(image,`checkout-worker-${req.user.id}`); const capture=await captureStoreLocationIfNeeded(store,req.user.id,latitude,longitude); const location=calculateLocation(capture.store,latitude,longitude,accuracy); if(capture.captured){location.status='captured';location.warning=false;location.passed=true;location.distance_m=0;location.store_location_captured=true;} const face=manualSelfieSubmission(); const safeItems=Array.isArray(items)?items:[]; let totalQty=0,totalValue=0; const prepared=[]; for(const item of safeItems){ const product=(await client.query('SELECT * FROM products WHERE id=$1',[item.product_id])).rows[0]; if(!product) continue; const qty=Math.max(0,parseInt(item.quantity||0,10)); const unitPrice=Number(item.unit_price ?? product.default_price ?? 0); const value=Number((qty*unitPrice).toFixed(2)); totalQty+=qty; totalValue+=value; prepared.push({product,qty,unitPrice,value}); } const customers=Math.max(0,parseInt(total_customers||0,10)); const converted=Math.max(0,parseInt(converted_customers||0,10)); const conversionRate=customers>0?Number(((converted/customers)*100).toFixed(2)):0; const noSaleReason=String(no_sale_reason||'').trim().slice(0,1000); if(totalQty===0&&!noSaleReason) return res.status(400).json({error:'No sale reason is required when no product quantity is sold.'}); const checkoutTime=nowIso(); const workMinutes=minutesBetween(open.check_in_time,checkoutTime); await client.query('BEGIN'); await client.query(`UPDATE attendance SET check_out_time=$1,check_out_lat=$2,check_out_lng=$3,check_out_accuracy=$4,out_face_score=$5,out_location_status=$6,check_out_distance_m=$7,out_location_warning=$8,status='closed',total_work_minutes=$9,out_face_image_path=$10,out_face_review_status='pending',updated_at=$11 WHERE id=$12`,[checkoutTime,latitude,longitude,accuracy||null,face.score,location.status,location.distance_m,location.warning?1:0,workMinutes,imagePath,checkoutTime,open.id]); const report=(await client.query(`INSERT INTO daily_sales_reports (attendance_id,worker_id,store_id,report_date,total_customers,converted_customers,conversion_rate,total_qty,total_value,no_sale_reason,logout_time,submitted_at,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,[open.id,req.user.id,open.store_id,dayjs(checkoutTime).format('YYYY-MM-DD'),customers,converted,conversionRate,totalQty,totalValue,noSaleReason||null,dayjs(checkoutTime).format('HH:mm'),checkoutTime,checkoutTime,checkoutTime])).rows[0]; for(const row of prepared){ await client.query('INSERT INTO daily_sales_report_items (daily_sales_report_id,product_id,product_name_snapshot,unit_price_snapshot,quantity,value,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',[report.id,row.product.id,row.product.model,row.unitPrice,row.qty,row.value,checkoutTime,checkoutTime]); } await client.query('COMMIT'); res.json({ok:true,check_out_time:checkoutTime,total_work_minutes:workMinutes,total_qty:totalQty,total_value:totalValue,conversion_rate:conversionRate,face,location}); } catch(e){ try{await client.query('ROLLBACK')}catch{} res.status(400).json({error:e.message}); } finally { client.release(); }});
 app.get('/api/worker/reports/monthly', auth, async (req,res)=>{ const reports=await all('SELECT * FROM monthly_attendance_reports WHERE worker_id=$1 ORDER BY year DESC, month DESC',[req.user.id]); res.json({reports}); });

@@ -11,11 +11,13 @@ async function bootWorker() {
   const me = await api('/api/me');
   meCache = me.user;
   renderProfile(meCache);
-  document.getElementById('faceBadge').textContent = 'Manual selfie review mode';
-  document.getElementById('faceBadge').className = 'badge warn';
+  document.getElementById('faceBadge').style.display = 'none';
   await loadStores();
   await loadProducts();
   await loadOpenAttendance();
+  await loadSummary();
+  await loadTopSellers();
+  await loadSalesTrend();
   await loadAttendance();
   await loadReports();
   setInterval(() => document.getElementById('logoutPreview').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), 1000);
@@ -93,6 +95,109 @@ function recalcSales() {
 totalCustomers.addEventListener('input', recalcSales);
 convertedCustomers.addEventListener('input', recalcSales);
 
+async function loadSummary() {
+  try {
+    const data = await api('/api/worker/summary');
+    const s = data.summary || {};
+    totalWorkingDays.textContent = Number(s.total_working_days || 0);
+    totalWorkingMonths.textContent = Number(s.total_working_months || 0);
+    totalProductsSold.textContent = Number(s.total_products_sold || 0);
+    totalAllSalesValue.textContent = Number(s.total_sales_value || 0).toFixed(2);
+  } catch (err) {
+    console.warn('Could not load staff summary', err);
+  }
+}
+
+
+function money(value) {
+  return Number(value || 0).toLocaleString([], { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function rankLabel(rank) {
+  return `Top ${rank}`;
+}
+
+async function loadTopSellers() {
+  try {
+    const data = await api('/api/worker/top-sellers');
+    const rankings = data.rankings || [];
+    topSellerMeta.textContent = rankings.length
+      ? `${data.month_label} ranking based on total sales value.`
+      : `No sales ranking is available for ${data.month_label} yet.`;
+    profileRankText.textContent = data.my_rank
+      ? `Your position this month: ${rankLabel(data.my_rank.rank)} · ${money(data.my_rank.total_value)} total sales value.`
+      : `No sales rank available for ${data.month_label} yet.`;
+    topSellerList.innerHTML = rankings.length ? rankings.map(item => `
+      <div class="top-seller-item ${item.is_me ? 'me' : ''}">
+        <div class="top-seller-rank">${rankLabel(item.rank)}</div>
+        <div class="top-seller-main">
+          <div class="top-seller-name">${escapeHtml(item.name)}</div>
+          <div class="top-seller-sub">${escapeHtml(item.employee_code || 'No ID')} · ${Number(item.total_qty || 0)} products · ${Number(item.active_days || 0)} reporting days</div>
+        </div>
+        <div class="top-seller-value">${money(item.total_value)}</div>
+      </div>
+    `).join('') : '<div class="empty-state-line">No top seller data yet for this month.</div>';
+  } catch (err) {
+    console.warn('Could not load top sellers', err);
+    topSellerMeta.textContent = 'Could not load the current month ranking.';
+    topSellerList.innerHTML = '<div class="empty-state-line">Ranking is temporarily unavailable.</div>';
+    profileRankText.textContent = 'Ranking is temporarily unavailable.';
+  }
+}
+
+function renderTrendInto(target, data) {
+  const ids = target === 'profile'
+    ? {
+        previousLabel: 'profilePreviousMonthLabel',
+        currentLabel: 'profileCurrentMonthLabel',
+        previousBar: 'profilePreviousMonthBar',
+        currentBar: 'profileCurrentMonthBar',
+        previousValue: 'profilePreviousMonthValue',
+        currentValue: 'profileCurrentMonthValue',
+        summary: 'profileSalesTrendSummary'
+      }
+    : {
+        previousLabel: 'previousMonthLabel',
+        currentLabel: 'currentMonthLabel',
+        previousBar: 'previousMonthBar',
+        currentBar: 'currentMonthBar',
+        previousValue: 'previousMonthValue',
+        currentValue: 'currentMonthValue',
+        summary: 'salesTrendSummary'
+      };
+  const currentValue = Number(data.current_month_total || 0);
+  const previousValue = Number(data.previous_month_total || 0);
+  const maxValue = Math.max(currentValue, previousValue, 1);
+  const currentHeight = `${Math.max(18, Math.round((currentValue / maxValue) * 100))}%`;
+  const previousHeight = `${Math.max(18, Math.round((previousValue / maxValue) * 100))}%`;
+  document.getElementById(ids.previousLabel).textContent = data.previous_month_label;
+  document.getElementById(ids.currentLabel).textContent = data.current_month_label;
+  document.getElementById(ids.previousBar).style.height = previousHeight;
+  document.getElementById(ids.currentBar).style.height = currentHeight;
+  document.getElementById(ids.previousValue).textContent = money(previousValue);
+  document.getElementById(ids.currentValue).textContent = money(currentValue);
+  const trendText = currentValue > previousValue
+    ? `${data.current_month_label} is higher than ${data.previous_month_label} by ${money(data.difference)}.`
+    : currentValue < previousValue
+      ? `${data.current_month_label} is lower than ${data.previous_month_label} by ${money(Math.abs(data.difference || 0))}.`
+      : `${data.current_month_label} is equal to ${data.previous_month_label}.`;
+  document.getElementById(ids.summary).textContent = trendText;
+}
+
+async function loadSalesTrend() {
+  try {
+    const data = await api('/api/worker/sales-trend');
+    salesTrendHeadline.textContent = `Comparing ${data.current_month_label} with ${data.previous_month_label}.`;
+    renderTrendInto('dashboard', data);
+    renderTrendInto('profile', data);
+  } catch (err) {
+    console.warn('Could not load sales trend', err);
+    salesTrendHeadline.textContent = 'Could not load sales trend right now.';
+    salesTrendSummary.textContent = 'Trend is temporarily unavailable.';
+    profileSalesTrendSummary.textContent = 'Trend is temporarily unavailable.';
+  }
+}
+
 async function loadOpenAttendance() {
   const data = await api('/api/worker/attendance/open');
   if (data.attendance) {
@@ -143,11 +248,27 @@ async function loadReports() {
       <td>${r.total_present_days}</td>
       <td>${r.total_absent_days}</td>
       <td>${fmtMinutes(r.total_work_minutes)}</td>
+      <td>${Number(r.total_sales_qty || 0)}</td>
       <td>${Number(r.total_sales_value || 0).toFixed(2)}</td>
       <td><span class="badge ${Number(r.location_warning_count || 0) ? 'bad' : 'ok'}">${Number(r.location_warning_count || 0)}</span></td>
       <td><button class="small" onclick="downloadReport('${r.report_id}')">PDF</button></td>
     </tr>
-  `).join('') || '<tr><td colspan="8">No monthly reports generated yet.</td></tr>';
+  `).join('') || '<tr><td colspan="9">No monthly reports generated yet.</td></tr>';
+}
+
+async function generateMyReport() {
+  try {
+    const now = new Date();
+    const data = await api('/api/worker/reports/monthly/generate', {
+      method: 'POST',
+      body: JSON.stringify({ month: now.getMonth() + 1, year: now.getFullYear(), through_date: now.toISOString() })
+    });
+    await loadReports();
+    alert('Month-to-date PDF report generated successfully.');
+    if (data.report?.report_id) downloadReport(data.report.report_id);
+  } catch (err) {
+    alert(err.message);
+  }
 }
 
 function badgeClass(status) {
@@ -166,10 +287,23 @@ function renderReviewStatus(r) {
     `<span class="badge ${badgeClass(outStatus)}">OUT: ${reviewLabel(outStatus)}</span>`;
 }
 
+function showLiveCameraFrame() {
+  camera.style.display = 'block';
+  snapshot.style.display = 'none';
+  cameraPlaceholder.style.display = stream ? 'none' : 'grid';
+  cameraFrame.classList.remove('captured');
+}
+function showCapturedCameraFrame() {
+  camera.style.display = 'none';
+  snapshot.style.display = 'block';
+  cameraPlaceholder.style.display = 'none';
+  cameraFrame.classList.add('captured');
+}
 async function startCamera() {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
     camera.srcObject = stream;
+    showLiveCameraFrame();
   } catch (err) {
     alert('Camera permission failed: ' + err.message);
   }
@@ -180,6 +314,7 @@ async function captureSnapshot() {
   const ctx = snapshot.getContext('2d');
   ctx.drawImage(camera, 0, 0, snapshot.width, snapshot.height);
   latestImage = snapshot.toDataURL('image/jpeg', 0.88);
+  showCapturedCameraFrame();
   if ('FaceDetector' in window) {
     try {
       const detector = new FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
@@ -188,6 +323,10 @@ async function captureSnapshot() {
     } catch {}
   }
   return latestImage;
+}
+function retakeSnapshot() {
+  latestImage = null;
+  showLiveCameraFrame();
 }
 function getLocationNow() {
   return new Promise((resolve, reject) => {
@@ -235,8 +374,8 @@ async function checkIn() {
     const data = await api('/api/attendance/check-in', { method: 'POST', body: JSON.stringify({ store_id: storeSelect.value, ...loc, image }) });
     showLocationResult(data.location);
     alert(data.location.warning ? `Checked in with location warning. Distance: ${data.location.distance_m}m.` : `Checked in successfully. Distance: ${data.location.distance_m}m.`);
-    latestImage = null; latestLocation = null;
-    await loadOpenAttendance(); await loadAttendance(); await refreshProfile(); await loadStores();
+    latestImage = null; latestLocation = null; showLiveCameraFrame();
+    await loadOpenAttendance(); await loadSummary(); await loadTopSellers(); await loadSalesTrend(); await loadAttendance(); await refreshProfile(); await loadStores();
   } catch (err) { alert(err.message); }
 }
 function buildSalesItems() {
@@ -279,8 +418,8 @@ async function checkOut() {
     showLocationResult(data.location);
     alert(data.location.warning ? `Checked out with location warning. Distance: ${data.location.distance_m}m. Total value: ${Number(data.total_value).toFixed(2)}.` : `Checked out successfully. Total value: ${Number(data.total_value).toFixed(2)}. Work time: ${fmtMinutes(data.total_work_minutes)}.`);
     document.querySelectorAll('#salesItems .qty').forEach(i => i.value = 0);
-    totalCustomers.value = 0; convertedCustomers.value = 0; latestImage = null; latestLocation = null; recalcSales();
-    await loadOpenAttendance(); await loadAttendance(); await refreshProfile();
+    totalCustomers.value = 0; convertedCustomers.value = 0; latestImage = null; latestLocation = null; showLiveCameraFrame(); recalcSales();
+    await loadOpenAttendance(); await loadSummary(); await loadTopSellers(); await loadSalesTrend(); await loadAttendance(); await refreshProfile(); await loadReports();
   } catch (err) { alert(err.message); }
 }
 
