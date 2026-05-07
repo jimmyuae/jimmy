@@ -248,3 +248,16 @@ textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(0,64,147,.12)
   .chat-emoji-visual.sm{width:30px;height:30px}
   .chat-emoji-message .chat-emoji-visual{width:54px;height:54px}
 }
+
+
+/* Simple native emoji picker and reactions */
+.chat-native-emoji{display:inline-flex;align-items:center;justify-content:center;font-family:Apple Color Emoji,Segoe UI Emoji,Noto Color Emoji,sans-serif;line-height:1;filter:none}
+.chat-native-emoji.xs{font-size:16px}
+.chat-native-emoji.sm{font-size:28px}
+.chat-native-emoji.md{font-size:22px}
+.chat-native-emoji.lg{font-size:48px}
+.chat-emoji-option{height:46px;background:#f8fbff;border:1px solid #dbeafe;box-shadow:0 4px 10px rgba(15,23,42,.05);animation:none}
+.chat-emoji-option:hover{background:#eef6ff;transform:translateY(-1px) scale(1.02)}
+.chat-emoji-message{font-size:48px;line-height:1;letter-spacing:0;animation:none;padding:4px 0}
+.chat-reaction-pill span{font-size:16px;animation:none}
+@media(max-width:640px){.chat-native-emoji.lg{font-size:44px}.chat-emoji-option{height:42px}.chat-native-emoji.sm{font-size:25px}}

@@ -30,16 +30,12 @@
   };
 
   function emojiVisual(emoji, sizeClass = 'md') {
-    const svg = animatedEmojiSvgs[String(emoji || '').trim()];
-    if (!svg) return `<span class="chat-emoji-fallback">${escapeHtml(String(emoji || ''))}</span>`;
-    return `<span class="chat-emoji-visual ${sizeClass}" data-emoji="${escapeAttr(emoji)}">${svg}</span>`;
+    return `<span class="chat-native-emoji ${sizeClass}" data-emoji="${escapeAttr(emoji)}">${escapeHtml(String(emoji || ''))}</span>`;
   }
 
   function emojiOnlyHtml(text) {
     const trimmed = String(text || '').trim();
-    return animatedEmojiSvgs[trimmed]
-      ? `<div class="chat-text chat-emoji-message">${emojiVisual(trimmed, 'lg')}</div>`
-      : `<div class="chat-text chat-emoji-message">${escapeHtml(trimmed)}</div>`;
+    return `<div class="chat-text chat-emoji-message"><span class="chat-native-emoji lg">${escapeHtml(trimmed)}</span></div>`;
   }
 
   function currentId() { return Number(currentUser()?.id || 0); }
@@ -85,7 +81,7 @@
           <button type="button" id="jimmyChatCancelVoice">Cancel</button>
         </div>
         <div class="chat-compose">
-          <button id="jimmyChatEmoji" class="chat-icon-btn" type="button" aria-label="Send animated emoji">${chatSvgIcon('emoji')}</button>
+          <button id="jimmyChatEmoji" class="chat-icon-btn" type="button" aria-label="Send emoji">${chatSvgIcon('emoji')}</button>
           <button id="jimmyChatAttach" class="chat-icon-btn" type="button" aria-label="Attach photo, video or document">${chatSvgIcon('attach')}</button>
           <input id="jimmyChatFile" type="file" hidden accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip">
           <textarea id="jimmyChatInput" rows="1" placeholder="Message"></textarea>
@@ -207,7 +203,7 @@
     const open = picker.style.display === 'flex';
     hideEmojiPickers();
     if (open) return;
-    picker.innerHTML = `<div class="chat-emoji-title">Live emoji</div><div class="chat-emoji-grid">${emojiButtons('jimmyChatSendEmoji')}</div>`;
+    picker.innerHTML = `<div class="chat-emoji-title">Emoji</div><div class="chat-emoji-grid">${emojiButtons('jimmyChatSendEmoji')}</div>`;
     picker.style.display = 'flex';
   }
 
